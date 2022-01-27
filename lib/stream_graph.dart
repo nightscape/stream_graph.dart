@@ -17,6 +17,20 @@ class TransformNode<S, T> extends StreamNode<T> {
   Stream<T> transformStream(Stream<S> input) => input.map(mapping);
 }
 
+class FilterNode<T> extends StreamNode<T> {
+  final StreamNode<T> input;
+  final bool Function(T) predicate;
+  FilterNode(this.input, this.predicate);
+  Stream<T> transformStream(Stream<T> input) => input.where(predicate);
+}
+
+class Partitioning<T> {
+  final StreamNode<T> matches;
+  final StreamNode<T> nonMatches;
+
+  Partitioning({required this.matches, required this.nonMatches});
+}
+
 class StreamGraph<I> {
   final startNode = SourceNode<I>();
   final graph = DirectedGraph<StreamNode>({});
@@ -33,6 +47,15 @@ class StreamGraph<I> {
 
   CompiledStreamGraph compile(Stream<I> source) =>
       CompiledStreamGraph(source, graph);
+
+  Partitioning<T> addPartitioning<T>(
+      SourceNode<T> input, bool Function(T x) predicate) {
+    final matchesNode = FilterNode<T>(input, predicate);
+    final nonMatchesNode = FilterNode(input, (T e) => !predicate(e));
+    graph.addEdges(input, {matchesNode});
+    graph.addEdges(input, {nonMatchesNode});
+    return Partitioning(matches: matchesNode, nonMatches: nonMatchesNode);
+  }
 }
 
 class CompiledStreamGraph<I> {
@@ -47,8 +70,11 @@ class CompiledStreamGraph<I> {
       final edges = graph.edges(node);
       if (edges.length > 1) stream = stream.asBroadcastStream();
       edges.forEach((edge) {
-        final edgeTransformer = edge as TransformNode;
-        streams[edge] = edgeTransformer.transformStream(stream);
+        if (edge is TransformNode) {
+          streams[edge] = edge.transformStream(stream);
+        } else if (edge is FilterNode) {
+          streams[edge] = edge.transformStream(stream);
+        }
       });
     });
   }

@@ -20,4 +20,16 @@ void main() {
     final doubledTripledStream = compiledGraph.forNode(doubledTripledNode);
     expect(doubledTripledStream, emitsInOrder([6, 12, 18]));
   });
+  test("Allows partitioning a stream into multiple streams", () {
+    var graph = new StreamGraph<int>();
+    final startNode = graph.startNode;
+    final partitioning =
+        graph.addPartitioning<int>(startNode, (x) => x % 3 == 0);
+    final source = Stream.fromIterable([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    final compiledGraph = graph.compile(source);
+    final multiplesOf3 = compiledGraph.forNode(partitioning.matches);
+    expect(multiplesOf3, emitsInOrder([3, 6, 9]));
+    final nonMultiplesOf3 = compiledGraph.forNode(partitioning.nonMatches);
+    expect(nonMultiplesOf3, emitsInOrder([1, 2, 4, 5, 7, 8]));
+  });
 }
