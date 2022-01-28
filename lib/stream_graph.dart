@@ -10,11 +10,10 @@ abstract class StreamNode<T> extends Comparable<dynamic> {
 class SourceNode<T> extends StreamNode<T> {}
 
 class TransformNode<S, T> extends StreamNode<T> {
-  final T Function(S) mapping;
+  final StreamTransformer<S, T> mapping;
   final StreamNode<S> input;
   TransformNode(this.input, this.mapping);
-  T transformElement(S input) => mapping(input);
-  Stream<T> transformStream(Stream<S> input) => input.map(mapping);
+  Stream<T> transformStream(Stream<S> input) => mapping.bind(input);
 }
 
 class FilterNode<T> extends StreamNode<T> {
@@ -38,12 +37,18 @@ class StreamGraph<I> {
     graph.comparator = null;
     graph.addEdges(startNode, {});
   }
-  StreamNode<T> addMapping<S, T>(StreamNode<S> input, T Function(S) mapping) {
-    final node = TransformNode<S, T>(input, mapping);
+
+  TransformNode<S, T> addTransformer<S, T>(
+      StreamNode<S> input, StreamTransformer<S, T> streamTransformer) {
+    final node = TransformNode<S, T>(input, streamTransformer);
     graph.addEdges(node, {});
     graph.addEdges(input, {node});
     return node;
   }
+
+  StreamNode<T> addMapping<S, T>(StreamNode<S> input, T Function(S) mapping) =>
+      addTransformer<S, T>(input,
+          StreamTransformer.fromBind((Stream<S> input) => input.map(mapping)));
 
   CompiledStreamGraph compile(Stream<I> source) =>
       CompiledStreamGraph(source, graph);

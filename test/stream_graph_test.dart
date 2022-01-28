@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:neurosphere_data_processing/stream_graph.dart';
 import 'package:test/test.dart';
 
@@ -19,6 +21,18 @@ void main() {
     expect(tripledStream, emitsInOrder([3, 6, 9]));
     final doubledTripledStream = compiledGraph.forNode(doubledTripledNode);
     expect(doubledTripledStream, emitsInOrder([6, 12, 18]));
+  });
+  test("Allows applying a StreamTransformer", () {
+    var graph = new StreamGraph<int>();
+    final startNode = graph.startNode;
+    final streamTransformer = StreamTransformer.fromBind(
+        (Stream<int> p) => p.map((x) => (x * 2).toString()));
+    final doubledStringNode =
+        graph.addTransformer<int, String>(startNode, streamTransformer);
+    final source = Stream.fromIterable([1, 2, 3]);
+    final compiledGraph = graph.compile(source);
+    final doubledStream = compiledGraph.forNode(doubledStringNode);
+    expect(doubledStream, emitsInOrder(['2', '4', '6']));
   });
   test("Allows partitioning a stream into multiple streams", () {
     var graph = new StreamGraph<int>();
