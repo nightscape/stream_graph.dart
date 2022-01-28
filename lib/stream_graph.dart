@@ -79,14 +79,19 @@ class StreamGraph<I> {
 }
 
 class CompiledStreamGraph<I> {
-  final Stream<I> startStream;
+  final Stream<I> source;
+  final StreamController<I> controller = StreamController<I>();
+  late final Stream<I> startStream;
+  late final StreamSubscription<I> subscription;
   final DirectedGraph<StreamNode> graph;
   final Map<StreamNode, Stream> streams = {};
   final Map<String, Stream> streamsByName = {};
 
   CompiledStreamGraph(
-      this.startStream, this.graph, Map<StreamNode, String> nodeNames) {
-    streams[graph.topologicalOrdering!.first] = startStream.asBroadcastStream();
+      this.source, this.graph, Map<StreamNode, String> nodeNames) {
+    startStream = controller.stream.asBroadcastStream();
+    subscription = source.listen(controller.add);
+    streams[graph.topologicalOrdering!.first] = startStream;
     streamsByName['start'] = startStream;
     graph.sortedTopologicalOrdering!.forEach((node) {
       var stream = streams[node]!;
@@ -106,4 +111,10 @@ class CompiledStreamGraph<I> {
   }
   Stream<S> forNode<S>(StreamNode<S> node) => streams[node]!.map((e) => e as S);
   Stream? operator [](String nodeName) => streamsByName[nodeName];
+  void pause() => subscription.pause();
+  void resume() => subscription.resume();
+  void close() {
+    subscription.cancel();
+    controller.close();
+  }
 }

@@ -79,4 +79,19 @@ void main() {
     final doubleTripledStream = compiledGraph.forNode(doubleTripledNode);
     expect(doubleTripledStream, emitsInOrder([6, 12, 18]));
   });
+  test("Allows pausing and resuming reading from the input stream", () async {
+    final graph = new StreamGraph<int>();
+    final startNode = graph.startNode;
+    final doubledNode =
+        graph.addMapping<int, int>(startNode, (x) => x * 2, 'doubled');
+    final controller = StreamController<int>();
+    final compiledGraph = graph.compile(controller.stream);
+    final doubledStream = compiledGraph.forNode(doubledNode);
+    [1, 2, 3].forEach(controller.add);
+    expect(doubledStream, emitsInOrder([2, 4, 6]));
+    await Future.delayed(Duration(milliseconds: 100));
+    compiledGraph.close();
+    [4, 5, 6].forEach(controller.add);
+    expect(doubledStream, emitsDone);
+  });
 }
