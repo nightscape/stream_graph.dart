@@ -86,12 +86,12 @@ class CompiledStreamGraph<I> {
 
   CompiledStreamGraph(
       this.startStream, this.graph, Map<StreamNode, String> nodeNames) {
-    streams[graph.topologicalOrdering!.first] = startStream;
+    streams[graph.topologicalOrdering!.first] = startStream.asBroadcastStream();
     streamsByName['start'] = startStream;
     graph.sortedTopologicalOrdering!.forEach((node) {
       var stream = streams[node]!;
       final edges = graph.edges(node);
-      if (edges.length > 1) stream = stream.asBroadcastStream();
+      stream = stream.asBroadcastStream();
       edges.forEach((edge) {
         if (edge is TransformNode) {
           streams[edge] = edge.transformStream(stream);

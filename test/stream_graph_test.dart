@@ -62,4 +62,21 @@ void main() {
     final doubledTripledStream = compiledGraph['doubledTripled'];
     expect(doubledTripledStream, emitsInOrder([6, 12, 18]));
   });
+  test("Allows retrieving a Stream even when downstream Streams depend on it",
+      () {
+    final graph = new StreamGraph<int>();
+    final startNode = graph.startNode;
+    final doubledNode =
+        graph.addMapping<int, int>(startNode, (x) => x * 2, 'doubled');
+    final doubleTripledNode =
+        graph.addMapping<int, int>(doubledNode, (x) => x * 3);
+    final source = Stream.fromIterable([1, 2, 3]);
+    final compiledGraph = graph.compile(source);
+    final doubledStream = compiledGraph.forNode(doubledNode);
+    expect(doubledStream, emitsInOrder([2, 4, 6]));
+    final doubledStreamByName = compiledGraph['doubled'];
+    expect(doubledStreamByName, emitsInOrder([2, 4, 6]));
+    final doubleTripledStream = compiledGraph.forNode(doubleTripledNode);
+    expect(doubleTripledStream, emitsInOrder([6, 12, 18]));
+  });
 }
