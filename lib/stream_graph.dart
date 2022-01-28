@@ -33,30 +33,45 @@ class Partitioning<T> {
 class StreamGraph<I> {
   final startNode = SourceNode<I>();
   final graph = DirectedGraph<StreamNode>({});
+  final nodeNames = <StreamNode, String>{};
   StreamGraph() {
     graph.comparator = null;
-    graph.addEdges(startNode, {});
+    addNode(startNode, 'start');
+  }
+
+  void addNode(StreamNode node, String? name) {
+    if (name != null) {
+      nodeNames[node] = name;
+    }
+    graph.addEdges(node, {});
   }
 
   TransformNode<S, T> addTransformer<S, T>(
-      StreamNode<S> input, StreamTransformer<S, T> streamTransformer) {
+      StreamNode<S> input, StreamTransformer<S, T> streamTransformer,
+      [String? name]) {
     final node = TransformNode<S, T>(input, streamTransformer);
-    graph.addEdges(node, {});
+    addNode(node, name);
     graph.addEdges(input, {node});
     return node;
   }
 
-  StreamNode<T> addMapping<S, T>(StreamNode<S> input, T Function(S) mapping) =>
-      addTransformer<S, T>(input,
-          StreamTransformer.fromBind((Stream<S> input) => input.map(mapping)));
+  StreamNode<T> addMapping<S, T>(StreamNode<S> input, T Function(S) mapping,
+          [String? name]) =>
+      addTransformer<S, T>(
+          input,
+          StreamTransformer.fromBind((Stream<S> input) => input.map(mapping)),
+          name);
 
   CompiledStreamGraph compile(Stream<I> source) =>
-      CompiledStreamGraph(source, graph);
+      CompiledStreamGraph(source, graph, nodeNames);
 
   Partitioning<T> addPartitioning<T>(
-      SourceNode<T> input, bool Function(T x) predicate) {
+      SourceNode<T> input, bool Function(T x) predicate,
+      {String? nameForMatches, String? nameForNonMatches}) {
     final matchesNode = FilterNode<T>(input, predicate);
     final nonMatchesNode = FilterNode(input, (T e) => !predicate(e));
+    addNode(matchesNode, nameForMatches);
+    addNode(nonMatchesNode, nameForNonMatches);
     graph.addEdges(input, {matchesNode});
     graph.addEdges(input, {nonMatchesNode});
     return Partitioning(matches: matchesNode, nonMatches: nonMatchesNode);
@@ -67,9 +82,12 @@ class CompiledStreamGraph<I> {
   final Stream<I> startStream;
   final DirectedGraph<StreamNode> graph;
   final Map<StreamNode, Stream> streams = {};
+  final Map<String, Stream> streamsByName = {};
 
-  CompiledStreamGraph(this.startStream, this.graph) {
+  CompiledStreamGraph(
+      this.startStream, this.graph, Map<StreamNode, String> nodeNames) {
     streams[graph.topologicalOrdering!.first] = startStream;
+    streamsByName['start'] = startStream;
     graph.sortedTopologicalOrdering!.forEach((node) {
       var stream = streams[node]!;
       final edges = graph.edges(node);
@@ -80,8 +98,12 @@ class CompiledStreamGraph<I> {
         } else if (edge is FilterNode) {
           streams[edge] = edge.transformStream(stream);
         }
+        if (nodeNames.containsKey(edge)) {
+          streamsByName[nodeNames[edge]!] = streams[edge]!;
+        }
       });
     });
   }
   Stream<S> forNode<S>(StreamNode<S> node) => streams[node]!.map((e) => e as S);
+  Stream? operator [](String nodeName) => streamsByName[nodeName];
 }

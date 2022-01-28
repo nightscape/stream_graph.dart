@@ -46,4 +46,20 @@ void main() {
     final nonMultiplesOf3 = compiledGraph.forNode(partitioning.nonMatches);
     expect(nonMultiplesOf3, emitsInOrder([1, 2, 4, 5, 7, 8]));
   });
+  test("Allows retrieving Streams by name", () {
+    final graph = new StreamGraph<int>();
+    final startNode = graph.startNode;
+    final doubledNode =
+        graph.addMapping<int, int>(startNode, (x) => x * 2, 'doubled');
+    graph.addMapping<int, int>(startNode, (x) => x * 3, 'tripled');
+    graph.addMapping<int, int>(doubledNode, (x) => x * 3, 'doubledTripled');
+    final source = Stream.fromIterable([1, 2, 3]);
+    final compiledGraph = graph.compile(source);
+    final doubledStream = compiledGraph['doubled'];
+    expect(doubledStream, emitsInOrder([2, 4, 6]));
+    final tripledStream = compiledGraph['tripled'];
+    expect(tripledStream, emitsInOrder([3, 6, 9]));
+    final doubledTripledStream = compiledGraph['doubledTripled'];
+    expect(doubledTripledStream, emitsInOrder([6, 12, 18]));
+  });
 }
