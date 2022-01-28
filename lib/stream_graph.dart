@@ -62,7 +62,7 @@ class StreamGraph<I> {
           StreamTransformer.fromBind((Stream<S> input) => input.map(mapping)),
           name);
 
-  CompiledStreamGraph compile(Stream<I> source) =>
+  CompiledStreamGraph<I> compile(Stream<I> source) =>
       CompiledStreamGraph(source, graph, nodeNames);
 
   Partitioning<T> addPartitioning<T>(
