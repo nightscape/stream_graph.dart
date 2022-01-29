@@ -72,6 +72,8 @@ void main() {
         graph.addMapping<int, int>(doubledNode, (x) => x * 3);
     final source = Stream.fromIterable([1, 2, 3]);
     final compiledGraph = graph.compile(source);
+    final originalStream = compiledGraph.forNode(startNode);
+    expect(originalStream, emitsInOrder([1, 2, 3]));
     final doubledStream = compiledGraph.forNode(doubledNode);
     expect(doubledStream, emitsInOrder([2, 4, 6]));
     final doubledStreamByName = compiledGraph['doubled'];
