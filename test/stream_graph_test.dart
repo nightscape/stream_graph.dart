@@ -96,4 +96,20 @@ void main() {
     [4, 5, 6].forEach(controller.add);
     expect(doubledStream, emitsDone);
   });
+  test("Allows working with infinite streams", () async {
+    final graph = new StreamGraph<int>();
+    final startNode = graph.startNode;
+    final doubledNode =
+        graph.addMapping<int, int>(startNode, (x) => x * 2, 'doubled');
+    final source = Stream.periodic(Duration(milliseconds: 10), (x) => x + 1);
+    final compiledGraph = graph.compile(source);
+    final originalStream = compiledGraph.forNode(startNode);
+    final doubledStream = compiledGraph.forNode(doubledNode);
+    await Future.delayed(Duration(milliseconds: 95));
+    compiledGraph.close();
+    expect(
+        originalStream, emitsInOrder([1, 2, 3, 4, 5, 6, 7, 8, 9, emitsDone]));
+    expect(doubledStream,
+        emitsInOrder([2, 4, 6, 8, 10, 12, 14, 16, 18, emitsDone]));
+  });
 }
