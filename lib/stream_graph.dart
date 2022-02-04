@@ -112,14 +112,15 @@ class StreamGraph {
           [String? name]) =>
       addTransformer<S, T>(
           input,
-          StreamTransformer.fromBind((Stream<S> input) => input.map(mapping)),
+          StreamTransformer<S, T>.fromBind(
+              (Stream<S> input) => input.map(mapping)),
           name);
 
   Partitioning<T> addPartitioning<T>(
       SourceNode<T> input, bool Function(T x) predicate,
       {String? nameForMatches, String? nameForNonMatches}) {
     final matchesNode = FilterNode<T>(input, predicate);
-    final nonMatchesNode = FilterNode(input, (T e) => !predicate(e));
+    final nonMatchesNode = FilterNode<T>(input, (T e) => !predicate(e));
     addNode(matchesNode, nameForMatches);
     addNode(nonMatchesNode, nameForNonMatches);
     graph.addEdges(input, {matchesNode});
@@ -182,6 +183,8 @@ class CompiledStreamGraph {
     });
   }
   Stream<S> forNode<S>(StreamNode<S> node) => streams[node]!.map((e) => e as S);
+  Stream<S> forNodeName<S>(String name) =>
+      forNode<S>(nodesByName[name]! as StreamNode<S>);
   Stream? operator [](String nodeName) =>
       forNode(nodesByName[nodeName]! as StreamNode);
   forEachStartStreamSubscription(void Function(StreamSubscription) f) {
@@ -191,8 +194,8 @@ class CompiledStreamGraph {
   T outputFor<T>(ConversionNode<dynamic, T> node) =>
       node.transformStream(streams[node.input]!);
 
-  Object outputForName(String name) =>
-      outputFor<dynamic>(this.nodesByName[name] as ConversionNode);
+  T outputForName<T>(String name) =>
+      outputFor<T>(this.nodesByName[name] as ConversionNode<dynamic, T>);
 
   forEachStartStreamController(void Function(StreamController) f) {
     startStreams.values.forEach((e) => f(e.key));
