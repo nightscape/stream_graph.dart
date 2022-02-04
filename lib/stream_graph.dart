@@ -29,16 +29,18 @@ class TransformNode<S, T> extends StreamNode<T> {
   final StreamTransformer<S, T> mapping;
   final StreamNode<S> input;
   TransformNode(this.input, this.mapping, {String? name}) : super(name: name);
-  Stream<T> transformStream(Stream<S> input) =>
-      mapping.bind(input).asBroadcastStream();
+  Stream<T> transformStreams(Map<StreamNode, Stream> existingStreams) =>
+      mapping.bind(existingStreams[input]! as Stream<S>).asBroadcastStream();
 }
 
 class FilterNode<T> extends StreamNode<T> {
   final StreamNode<T> input;
   final bool Function(T) predicate;
   FilterNode(this.input, this.predicate, {String? name}) : super(name: name);
-  Stream<T> transformStream(Stream<T> input) =>
-      input.where(predicate).asBroadcastStream();
+  Stream<T> transformStreams(Map<StreamNode, Stream> existingStreams) =>
+      (existingStreams[input]! as Stream<T>)
+          .where(predicate)
+          .asBroadcastStream();
 }
 
 class Partitioning<T> extends StreamNode<T> {
@@ -164,9 +166,9 @@ class CompiledStreamGraph {
       final edges = graph.edges(node);
       edges.forEach((edge) {
         if (edge is TransformNode) {
-          streams[edge] = edge.transformStream(stream);
+          streams[edge] = edge.transformStreams(streams);
         } else if (edge is FilterNode) {
-          streams[edge] = edge.transformStream(stream);
+          streams[edge] = edge.transformStreams(streams);
         } else if (edge is CombineAllNode) {
           streams[edge] = edge.transformStreams(streams);
         } else if (edge is ConversionNode) {
