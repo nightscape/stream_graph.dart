@@ -7,11 +7,13 @@ abstract class GraphNode extends Comparable<dynamic> {
   GraphNode({this.name});
   @override
   int compareTo(dynamic other) => 0;
+  String get outputType => this.runtimeType.toString();
+  @override
+  String toString() => (name ?? super.toString()) + ":\n$outputType";
 }
 
 abstract class StreamNode<T> extends GraphNode {
   StreamNode({String? name}) : super(name: name);
-  String toString() => name ?? super.toString();
 }
 
 class SourceNode<T> extends StreamNode<T> {
@@ -29,6 +31,7 @@ class TransformNode<S, T> extends StreamNode<T> {
   final StreamTransformer<S, T> mapping;
   final StreamNode<S> input;
   TransformNode(this.input, this.mapping, {String? name}) : super(name: name);
+
   Stream<T> transformStreams(Map<StreamNode, Stream> existingStreams) =>
       mapping.bind(existingStreams[input]! as Stream<S>).asBroadcastStream();
 }
