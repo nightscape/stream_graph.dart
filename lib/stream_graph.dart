@@ -29,14 +29,16 @@ class TransformNode<S, T> extends StreamNode<T> {
   final StreamTransformer<S, T> mapping;
   final StreamNode<S> input;
   TransformNode(this.input, this.mapping, {String? name}) : super(name: name);
-  Stream<T> transformStream(Stream<S> input) => mapping.bind(input);
+  Stream<T> transformStream(Stream<S> input) =>
+      mapping.bind(input).asBroadcastStream();
 }
 
 class FilterNode<T> extends StreamNode<T> {
   final StreamNode<T> input;
   final bool Function(T) predicate;
   FilterNode(this.input, this.predicate, {String? name}) : super(name: name);
-  Stream<T> transformStream(Stream<T> input) => input.where(predicate);
+  Stream<T> transformStream(Stream<T> input) =>
+      input.where(predicate).asBroadcastStream();
 }
 
 class Partitioning<T> extends StreamNode<T> {
@@ -52,8 +54,11 @@ class CombineAllNode<S, T> extends StreamNode<T> {
   final Stream<T> Function(List<Stream<S>>) combinator;
   CombineAllNode(this.inputs, this.combinator, {String? name})
       : super(name: name);
-  Stream<T> transformStreams(Map<StreamNode, Stream> inputs) => combinator(
-      this.inputs.map((i) => inputs[i]! as Stream<S>).toList(growable: false));
+  Stream<T> transformStreams(Map<StreamNode, Stream> inputs) => combinator(this
+          .inputs
+          .map((i) => inputs[i]! as Stream<S>)
+          .toList(growable: false))
+      .asBroadcastStream();
 }
 
 class ConversionNode<S, T> extends GraphNode {
@@ -155,9 +160,8 @@ class CompiledStreamGraph {
       streams[key] = value.key.stream;
     });
     graph.sortedTopologicalOrdering!.whereType<StreamNode>().forEach((node) {
-      var stream = streams[node]!;
+      final stream = streams[node]!;
       final edges = graph.edges(node);
-      stream = stream.asBroadcastStream();
       edges.forEach((edge) {
         if (edge is TransformNode) {
           streams[edge] = edge.transformStream(stream);
