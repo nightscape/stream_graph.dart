@@ -138,4 +138,16 @@ void main() {
         completion(containsAllInOrder(
             [2, 300, 4, 303, 6, 306, 8, 10, 309, 12, 312, 14])));
   });
+  test("Allows converting Streams to arbitrary objects", () async {
+    var graph = new StreamGraph();
+    final startNode = graph.addStartNode<int>(pauseable: true);
+    final converted = graph.convert<int, Future<List<int>>>(
+        startNode, (stream) => stream.toList());
+    final source = Stream.fromIterable([1, 2, 3]);
+    final compiledGraph = graph.compile({startNode: source});
+    final convertedToFutureList = compiledGraph.outputFor(converted);
+    await Future.delayed(Duration(milliseconds: 1));
+    compiledGraph.close();
+    expect(convertedToFutureList, completion([1, 2, 3]));
+  });
 }

@@ -2,11 +2,15 @@ import 'dart:async';
 
 import 'package:directed_graph/directed_graph.dart';
 
-abstract class StreamNode<T> extends Comparable<dynamic> {
+abstract class GraphNode extends Comparable<dynamic> {
   String? name;
-  StreamNode({this.name});
+  GraphNode({this.name});
   @override
   int compareTo(dynamic other) => 0;
+}
+
+abstract class StreamNode<T> extends GraphNode {
+  StreamNode({String? name}) : super(name: name);
   String toString() => name ?? super.toString();
 }
 
@@ -16,6 +20,9 @@ class SourceNode<T> extends StreamNode<T> {
   SourceNode({this.pauseable = true, String? name}) : super(name: name) {
     this.controller = StreamController<T>.broadcast();
   }
+  MapEntry<StreamController<T>, StreamSubscription<T>> attach(
+          Stream<T> source) =>
+      MapEntry(controller, source.listen(controller.add));
 }
 
 class TransformNode<S, T> extends StreamNode<T> {
@@ -40,17 +47,28 @@ class Partitioning<T> extends StreamNode<T> {
       : super(name: name);
 }
 
-class CombineAllNode<T, U> extends StreamNode<U> {
-  final List<StreamNode<T>> inputs;
-  final Stream<U> Function(List<Stream<T>>) combinator;
+class CombineAllNode<S, T> extends StreamNode<T> {
+  final List<StreamNode<S>> inputs;
+  final Stream<T> Function(List<Stream<S>>) combinator;
   CombineAllNode(this.inputs, this.combinator, {String? name})
       : super(name: name);
-  Stream<U> transformStreams(List<Stream<T>> inputs) => combinator(inputs);
+  Stream<T> transformStreams(Map<StreamNode, Stream> inputs) => combinator(
+      this.inputs.map((i) => inputs[i]! as Stream<S>).toList(growable: false));
+}
+
+class ConversionNode<S, T> extends GraphNode {
+  final StreamNode<S> input;
+  final T Function(Stream<S>) converter;
+  final String? name;
+  ConversionNode(this.input, this.converter, {this.name});
+  T transformStream(Stream<S> input) => converter(input);
+  @override
+  String toString() => name ?? super.toString();
 }
 
 class StreamGraph {
-  final graph = DirectedGraph<StreamNode>({});
-  final nodeNames = <StreamNode, String>{};
+  final graph = DirectedGraph<GraphNode>({});
+  final nodeNames = <GraphNode, String>{};
   StreamGraph() {
     graph.comparator = null;
   }
@@ -58,7 +76,7 @@ class StreamGraph {
   CompiledStreamGraph compile(Map<SourceNode, Stream> binding) =>
       CompiledStreamGraph(graph, nodeNames, binding);
 
-  void addNode(StreamNode node, String? name) {
+  void addNode(GraphNode node, String? name) {
     if (name != null) {
       nodeNames[node] = name;
     }
@@ -99,39 +117,44 @@ class StreamGraph {
     return Partitioning(matches: matchesNode, nonMatches: nonMatchesNode);
   }
 
-  combineAll<T, U>(
-      List<StreamNode<T>> list, Stream<U> Function(List<Stream<T>>) combinator,
+  combineAll<S, T>(
+      List<StreamNode<S>> list, Stream<T> Function(List<Stream<S>>) combinator,
       {String? name}) {
-    final mergeNode = CombineAllNode(list, combinator, name: name);
+    final mergeNode = CombineAllNode<S, T>(list, combinator, name: name);
     addNode(mergeNode, name);
     for (final node in list) {
       graph.addEdges(node, {mergeNode});
     }
     return mergeNode;
   }
+
+  ConversionNode<S, T> convert<S, T>(
+      StreamNode<S> node, T Function(Stream<S>) converter,
+      {String? name}) {
+    final n = ConversionNode<S, T>(node, converter, name: name);
+    addNode(n, name);
+    graph.addEdges(node, {n});
+    return n;
+  }
 }
 
 class CompiledStreamGraph {
   late final Map<SourceNode, MapEntry<StreamController, StreamSubscription>>
       startStreams;
-  final DirectedGraph<StreamNode> graph;
+  final DirectedGraph<GraphNode> graph;
   final Map<StreamNode, Stream> streams = {};
-  final Map<String, Stream> streamsByName = {};
+  late final Map<String, GraphNode> nodesByName;
+  final Map<ConversionNode, Object> outputs = {};
 
-  CompiledStreamGraph(this.graph, Map<StreamNode, String> nodeNames,
+  CompiledStreamGraph(this.graph, Map<GraphNode, String> nodeNames,
       Map<SourceNode, Stream> binding) {
-    startStreams = binding.map((key, stream) {
-      final controller = key.controller;
-      final subscription = stream.listen(controller.add);
-      return MapEntry(key, MapEntry(controller, subscription));
-    });
+    nodesByName = {for (var e in nodeNames.entries) e.value: e.key};
+    startStreams =
+        binding.map((key, stream) => MapEntry(key, key.attach(stream)));
     startStreams.forEach((key, value) {
       streams[key] = value.key.stream;
-      if (nodeNames.containsKey(key)) {
-        streamsByName[nodeNames[key]!] = value.key.stream;
-      }
     });
-    graph.sortedTopologicalOrdering!.forEach((node) {
+    graph.sortedTopologicalOrdering!.whereType<StreamNode>().forEach((node) {
       var stream = streams[node]!;
       final edges = graph.edges(node);
       stream = stream.asBroadcastStream();
@@ -140,18 +163,27 @@ class CompiledStreamGraph {
           streams[edge] = edge.transformStream(stream);
         } else if (edge is FilterNode) {
           streams[edge] = edge.transformStream(stream);
-        }
-        if (nodeNames.containsKey(edge)) {
-          streamsByName[nodeNames[edge]!] = streams[edge]!;
+        } else if (edge is CombineAllNode) {
+          streams[edge] = edge.transformStreams(streams);
+        } else if (edge is ConversionNode) {
+        } else {
+          throw UnimplementedError('$edge');
         }
       });
     });
   }
   Stream<S> forNode<S>(StreamNode<S> node) => streams[node]!.map((e) => e as S);
-  Stream? operator [](String nodeName) => streamsByName[nodeName];
+  Stream? operator [](String nodeName) =>
+      forNode(nodesByName[nodeName]! as StreamNode);
   forEachStartStreamSubscription(void Function(StreamSubscription) f) {
     startStreams.values.forEach((e) => f(e.value));
   }
+
+  T outputFor<T>(ConversionNode<dynamic, T> node) =>
+      node.transformStream(streams[node.input]!);
+
+  Object outputForName(String name) =>
+      outputFor<dynamic>(this.nodesByName[name] as ConversionNode);
 
   forEachStartStreamController(void Function(StreamController) f) {
     startStreams.values.forEach((e) => f(e.key));
