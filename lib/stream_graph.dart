@@ -14,6 +14,12 @@ abstract class GraphNode extends Comparable<dynamic> {
 
 abstract class StreamNode<T> extends GraphNode {
   StreamNode({String? name}) : super(name: name);
+  StreamTransformer<T, T> streamTransformer(
+          StreamTransformer<T, T> Function(StreamNode<T>) transformer) =>
+      transformer(this);
+  Stream<T> applyStreamTransformer(Stream<T> stream,
+          StreamTransformer<T, T> Function(StreamNode<T>)? transformer) =>
+      transformer != null ? stream.transform(transformer(this)) : stream;
 }
 
 class SourceNode<T> extends StreamNode<T> {
@@ -33,7 +39,7 @@ class TransformNode<S, T> extends StreamNode<T> {
   TransformNode(this.input, this.mapping, {String? name}) : super(name: name);
 
   Stream<T> transformStreams(Map<StreamNode, Stream> existingStreams) =>
-      mapping.bind(existingStreams[input]! as Stream<S>).asBroadcastStream();
+      mapping.bind(existingStreams[input]! as Stream<S>);
 }
 
 class FilterNode<T> extends StreamNode<T> {
@@ -41,9 +47,7 @@ class FilterNode<T> extends StreamNode<T> {
   final bool Function(T) predicate;
   FilterNode(this.input, this.predicate, {String? name}) : super(name: name);
   Stream<T> transformStreams(Map<StreamNode, Stream> existingStreams) =>
-      (existingStreams[input]! as Stream<T>)
-          .where(predicate)
-          .asBroadcastStream();
+      (existingStreams[input]! as Stream<T>).where(predicate);
 }
 
 class Partitioning<T> extends StreamNode<T> {
@@ -59,11 +63,8 @@ class CombineAllNode<S, T> extends StreamNode<T> {
   final Stream<T> Function(List<Stream<S>>) combinator;
   CombineAllNode(this.inputs, this.combinator, {String? name})
       : super(name: name);
-  Stream<T> transformStreams(Map<StreamNode, Stream> inputs) => combinator(this
-          .inputs
-          .map((i) => inputs[i]! as Stream<S>)
-          .toList(growable: false))
-      .asBroadcastStream();
+  Stream<T> transformStreams(Map<StreamNode, Stream> inputs) => combinator(
+      this.inputs.map((i) => inputs[i]! as Stream<S>).toList(growable: false));
 }
 
 class ConversionNode<S, T> extends GraphNode {
@@ -83,8 +84,11 @@ class StreamGraph {
     graph.comparator = null;
   }
 
-  CompiledStreamGraph compile(Map<SourceNode, Stream> binding) =>
-      CompiledStreamGraph(graph, nodeNames, binding);
+  CompiledStreamGraph compile(Map<SourceNode, Stream> binding,
+          {StreamTransformer<T, T> Function<T>(StreamNode<T> node)?
+              transformStream}) =>
+      CompiledStreamGraph(graph, nodeNames, binding,
+          transformStream: transformStream);
 
   void addNode(GraphNode node, String? name) {
     if (name != null) {
@@ -156,32 +160,44 @@ class CompiledStreamGraph {
   final Map<StreamNode, Stream> streams = {};
   late final Map<String, GraphNode> nodesByName;
   final Map<ConversionNode, Object> outputs = {};
+  final StreamTransformer<T, T> Function<T>(StreamNode<T> node)?
+      transformStream;
 
   CompiledStreamGraph(this.graph, Map<GraphNode, String> nodeNames,
-      Map<SourceNode, Stream> binding) {
+      Map<SourceNode, Stream> binding,
+      {this.transformStream}) {
     nodesByName = {for (var e in nodeNames.entries) e.value: e.key};
     startStreams =
         binding.map((key, stream) => MapEntry(key, key.attach(stream)));
     startStreams.forEach((key, value) {
-      streams[key] = value.key.stream;
+      _addStreamForNode(value.key.stream, key);
     });
     graph.sortedTopologicalOrdering!.whereType<StreamNode>().forEach((node) {
-      final stream = streams[node]!;
-      final edges = graph.edges(node);
-      edges.forEach((edge) {
-        if (edge is TransformNode) {
-          streams[edge] = edge.transformStreams(streams);
-        } else if (edge is FilterNode) {
-          streams[edge] = edge.transformStreams(streams);
-        } else if (edge is CombineAllNode) {
-          streams[edge] = edge.transformStreams(streams);
-        } else if (edge is ConversionNode) {
+      final targetNodes = graph.edges(node);
+      targetNodes.forEach((targetNode) {
+        Stream? newStream;
+        if (targetNode is TransformNode) {
+          newStream = targetNode.transformStreams(streams);
+        } else if (targetNode is FilterNode) {
+          newStream = targetNode.transformStreams(streams);
+        } else if (targetNode is CombineAllNode) {
+          newStream = targetNode.transformStreams(streams);
+        } else if (targetNode is ConversionNode) {
         } else {
-          throw UnimplementedError('$edge');
+          throw UnimplementedError('$targetNode');
+        }
+        if (newStream != null && targetNode is StreamNode) {
+          _addStreamForNode(newStream, targetNode);
         }
       });
     });
   }
+  void _addStreamForNode<T>(Stream<T> stream, StreamNode<T> node) {
+    Stream<T> transformedStream =
+        node.applyStreamTransformer(stream, transformStream);
+    streams[node] = transformedStream.asBroadcastStream();
+  }
+
   Stream<S> forNode<S>(StreamNode<S> node) => streams[node]!.map((e) => e as S);
   Stream<S> forNodeName<S>(String name) =>
       forNode<S>(nodesByName[name]! as StreamNode<S>);

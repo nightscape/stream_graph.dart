@@ -3,7 +3,7 @@ description: A Dart library for constructing directed acyclic graphs of Streams 
 version: 0.2.0
 publish_to: none
 environment:
-  sdk: ">=2.13.0 <3.0.0"
+  sdk: ">=2.15.0 <3.0.0"
 
 dependencies:
   directed_graph:

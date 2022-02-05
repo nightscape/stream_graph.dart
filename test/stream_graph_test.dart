@@ -138,6 +138,27 @@ void main() {
         completion(containsAllInOrder(
             [2, 300, 4, 303, 6, 306, 8, 10, 309, 12, 312, 14])));
   });
+  test("Allows transforming generated Streams", () async {
+    var graph = new StreamGraph();
+    final startNode = graph.addStartNode<int>(pauseable: true);
+    final doubledNode =
+        graph.addMapping<int, int>(startNode, (x) => x * 2, 'doubled');
+    final source = Stream.fromIterable([1, 2, 3]);
+    final StreamController<int> sideChannel = StreamController<int>();
+
+    final compiledGraph = graph.compile({startNode: source},
+        transformStream: <U>(StreamNode<U> node) => DoStreamTransformer<U>(
+            onData: (event) => sideChannel.add((event as dynamic) * 3)));
+    final sideChannelFutureList = sideChannel.stream.toList();
+    final stream1List = compiledGraph.forNode(startNode).toList();
+    final stream2List = compiledGraph.forNode(doubledNode).toList();
+    await Future.delayed(Duration(milliseconds: 1));
+    compiledGraph.close();
+    expect(stream1List, completion([1, 2, 3]));
+    expect(stream2List, completion([2, 4, 6]));
+    expect(sideChannelFutureList, completion([3, 6, 6, 12, 9, 18]));
+    sideChannel.close();
+  });
   test("Allows converting Streams to arbitrary objects", () async {
     var graph = new StreamGraph();
     final startNode = graph.addStartNode<int>(pauseable: true);
