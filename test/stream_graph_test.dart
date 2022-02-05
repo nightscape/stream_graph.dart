@@ -147,8 +147,7 @@ void main() {
     final StreamController<int> sideChannel = StreamController<int>();
 
     final compiledGraph = graph.compile({startNode: source},
-        transformStream: <U>(StreamNode<U> node) => DoStreamTransformer<U>(
-            onData: (event) => sideChannel.add((event as dynamic) * 3)));
+        doOnData: (event) => sideChannel.add(event * 3));
     final sideChannelFutureList = sideChannel.stream.toList();
     final stream1List = compiledGraph.forNode(startNode).toList();
     final stream2List = compiledGraph.forNode(doubledNode).toList();

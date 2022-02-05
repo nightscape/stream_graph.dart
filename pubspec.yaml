@@ -7,8 +7,8 @@ environment:
 
 dependencies:
   directed_graph:
+  rxdart:
 
 
 dev_dependencies:
   test: ^1.20.1
-  rxdart:

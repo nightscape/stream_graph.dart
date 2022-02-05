@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:directed_graph/directed_graph.dart';
+import 'package:rxdart/rxdart.dart';
 
 abstract class GraphNode extends Comparable<dynamic> {
   String? name;
@@ -17,9 +18,8 @@ abstract class StreamNode<T> extends GraphNode {
   StreamTransformer<T, T> streamTransformer(
           StreamTransformer<T, T> Function(StreamNode<T>) transformer) =>
       transformer(this);
-  Stream<T> applyStreamTransformer(Stream<T> stream,
-          StreamTransformer<T, T> Function(StreamNode<T>)? transformer) =>
-      transformer != null ? stream.transform(transformer(this)) : stream;
+  Stream<T> withDoOnData(Stream<T> input, void Function(dynamic) onData) =>
+      input.doOnData(onData);
 }
 
 class SourceNode<T> extends StreamNode<T> {
@@ -86,9 +86,10 @@ class StreamGraph {
 
   CompiledStreamGraph compile(Map<SourceNode, Stream> binding,
           {StreamTransformer<T, T> Function<T>(StreamNode<T> node)?
-              transformStream}) =>
+              transformStream,
+          void Function(dynamic)? doOnData}) =>
       CompiledStreamGraph(graph, nodeNames, binding,
-          transformStream: transformStream);
+          transformStream: transformStream, doOnData: doOnData);
 
   void addNode(GraphNode node, String? name) {
     if (name != null) {
@@ -162,10 +163,11 @@ class CompiledStreamGraph {
   final Map<ConversionNode, Object> outputs = {};
   final StreamTransformer<T, T> Function<T>(StreamNode<T> node)?
       transformStream;
+  final void Function(dynamic o)? doOnData;
 
   CompiledStreamGraph(this.graph, Map<GraphNode, String> nodeNames,
       Map<SourceNode, Stream> binding,
-      {this.transformStream}) {
+      {this.transformStream, this.doOnData}) {
     nodesByName = {for (var e in nodeNames.entries) e.value: e.key};
     startStreams =
         binding.map((key, stream) => MapEntry(key, key.attach(stream)));
@@ -194,7 +196,7 @@ class CompiledStreamGraph {
   }
   void _addStreamForNode<T>(Stream<T> stream, StreamNode<T> node) {
     Stream<T> transformedStream =
-        node.applyStreamTransformer(stream, transformStream);
+        doOnData == null ? stream : node.withDoOnData(stream, doOnData!);
     streams[node] = transformedStream.asBroadcastStream();
   }
 
