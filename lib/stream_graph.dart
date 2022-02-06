@@ -18,8 +18,9 @@ abstract class StreamNode<T> extends GraphNode {
   StreamTransformer<T, T> streamTransformer(
           StreamTransformer<T, T> Function(StreamNode<T>) transformer) =>
       transformer(this);
-  Stream<T> withDoOnData(Stream<T> input, void Function(dynamic) onData) =>
-      input.doOnData(onData);
+  Stream<T> withDoOnData(
+          Stream<T> input, void Function(dynamic, StreamNode<T>) onData) =>
+      input.doOnData((event) => onData(event, this));
 }
 
 class SourceNode<T> extends StreamNode<T> {
@@ -87,7 +88,7 @@ class StreamGraph {
   CompiledStreamGraph compile(Map<SourceNode, Stream> binding,
           {StreamTransformer<T, T> Function<T>(StreamNode<T> node)?
               transformStream,
-          void Function(dynamic)? doOnData}) =>
+          void Function(dynamic, StreamNode)? doOnData}) =>
       CompiledStreamGraph(graph, nodeNames, binding,
           transformStream: transformStream, doOnData: doOnData);
 
@@ -163,7 +164,7 @@ class CompiledStreamGraph {
   final Map<ConversionNode, Object> outputs = {};
   final StreamTransformer<T, T> Function<T>(StreamNode<T> node)?
       transformStream;
-  final void Function(dynamic o)? doOnData;
+  final void Function(dynamic o, StreamNode)? doOnData;
 
   CompiledStreamGraph(this.graph, Map<GraphNode, String> nodeNames,
       Map<SourceNode, Stream> binding,

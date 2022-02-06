@@ -140,14 +140,14 @@ void main() {
   });
   test("Allows transforming generated Streams", () async {
     var graph = new StreamGraph();
-    final startNode = graph.addStartNode<int>(pauseable: true);
+    final startNode = graph.addStartNode<int>(pauseable: true, name: 'start');
     final doubledNode =
         graph.addMapping<int, int>(startNode, (x) => x * 2, 'doubled');
     final source = Stream.fromIterable([1, 2, 3]);
-    final StreamController<int> sideChannel = StreamController<int>();
+    final StreamController<String> sideChannel = StreamController<String>();
 
     final compiledGraph = graph.compile({startNode: source},
-        doOnData: (event) => sideChannel.add(event * 3));
+        doOnData: (event, node) => sideChannel.add("${node.name}: $event"));
     final sideChannelFutureList = sideChannel.stream.toList();
     final stream1List = compiledGraph.forNode(startNode).toList();
     final stream2List = compiledGraph.forNode(doubledNode).toList();
@@ -155,7 +155,16 @@ void main() {
     compiledGraph.close();
     expect(stream1List, completion([1, 2, 3]));
     expect(stream2List, completion([2, 4, 6]));
-    expect(sideChannelFutureList, completion([3, 6, 6, 12, 9, 18]));
+    expect(
+        sideChannelFutureList,
+        completion([
+          "start: 1",
+          "doubled: 2",
+          "start: 2",
+          "doubled: 4",
+          "start: 3",
+          "doubled: 6"
+        ]));
     sideChannel.close();
   });
   test("Allows converting Streams to arbitrary objects", () async {
