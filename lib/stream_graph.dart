@@ -176,23 +176,23 @@ class CompiledStreamGraph {
       _addStreamForNode(value.key.stream, key);
     });
     graph.sortedTopologicalOrdering!.whereType<StreamNode>().forEach((node) {
-      final targetNodes = graph.edges(node);
-      targetNodes.forEach((targetNode) {
-        Stream? newStream;
-        if (targetNode is TransformNode) {
-          newStream = targetNode.transformStreams(streams);
-        } else if (targetNode is FilterNode) {
-          newStream = targetNode.transformStreams(streams);
-        } else if (targetNode is CombineAllNode) {
-          newStream = targetNode.transformStreams(streams);
-        } else if (targetNode is ConversionNode) {
-        } else {
-          throw UnimplementedError('$targetNode');
-        }
-        if (newStream != null && targetNode is StreamNode) {
-          _addStreamForNode(newStream, targetNode);
-        }
-      });
+      Stream? newStream;
+      if (node is SourceNode) {
+        newStream = startStreams[node]!.key.stream;
+      } else if (node is TransformNode) {
+        newStream = node.transformStreams(streams);
+      } else if (node is FilterNode) {
+        newStream = node.transformStreams(streams);
+      } else if (node is CombineAllNode) {
+        newStream = node.transformStreams(streams);
+      } else if (node is ConversionNode) {
+      } else {
+        throw UnimplementedError('$node');
+      }
+      if (newStream != null && node is StreamNode) {
+        _addStreamForNode(newStream, node);
+      }
+      //});
     });
   }
   void _addStreamForNode<T>(Stream<T> stream, StreamNode<T> node) {
@@ -225,5 +225,11 @@ class CompiledStreamGraph {
   void close() {
     forEachStartStreamSubscription((s) => s.cancel());
     forEachStartStreamController((c) => c.close());
+  }
+}
+
+extension IncomingEdges<T extends Object> on DirectedGraph<T> {
+  Iterable<T> incomingEdges(T node) {
+    return this.where((element) => this.edges(element).contains(node));
   }
 }
