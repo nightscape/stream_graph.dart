@@ -108,10 +108,12 @@ void main() {
     final compiledGraph = graph.compile({startNode: source});
     final originalStream = compiledGraph.forNode(startNode).toList();
     final doubledStream = compiledGraph.forNode(doubledNode).toList();
-    await Future.delayed(Duration(milliseconds: 95));
+    await Future.delayed(Duration(milliseconds: 300));
     compiledGraph.close();
-    expect(originalStream, completion([1, 2, 3, 4, 5, 6, 7, 8, 9]));
-    expect(doubledStream, completion([2, 4, 6, 8, 10, 12, 14, 16, 18]));
+    expect(originalStream.then((value) => value.take(10)),
+        completion([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]));
+    expect(doubledStream.then((value) => value.take(10)),
+        completion([2, 4, 6, 8, 10, 12, 14, 16, 18, 20]));
   });
   test("Allows working with multiple input streams", () async {
     final graph = new StreamGraph();
@@ -135,8 +137,8 @@ void main() {
     compiledGraph.close();
     expect(
         mergedStream,
-        completion(containsAllInOrder(
-            [2, 300, 4, 303, 6, 306, 8, 10, 309, 12, 312, 14])));
+        completion(allOf(containsAllInOrder([300, 303, 306, 309, 312]),
+            containsAllInOrder([2, 4, 6, 8, 10, 12]))));
   });
   test("Allows transforming generated Streams", () async {
     var graph = new StreamGraph();
