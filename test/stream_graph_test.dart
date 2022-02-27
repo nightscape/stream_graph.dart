@@ -37,7 +37,8 @@ void main() {
     final doubledStream = compiledGraph.forNode(doubledStringNode);
     expect(doubledStream, emitsInOrder(['2', '4', '6']));
   });
-  test("Allows partitioning a stream into multiple streams", () {
+  test("Allows partitioning a stream into two streams according to a predicate",
+      () {
     var graph = new StreamGraph();
     final startNode = graph.addStartNode<int>(pauseable: true);
     final partitioning =
@@ -48,6 +49,24 @@ void main() {
     expect(multiplesOf3, emitsInOrder([3, 6, 9]));
     final nonMultiplesOf3 = compiledGraph.forNode(partitioning.nonMatches);
     expect(nonMultiplesOf3, emitsInOrder([1, 2, 4, 5, 7, 8]));
+  });
+  test("Allows grouping a stream into multiple streams with identical key", () {
+    var graph = new StreamGraph();
+    final startNode = graph.addStartNode<int>(pauseable: true);
+    final grouping = graph.addGroupMapping<int, int, String>(startNode,
+        grouper: (x) => x % 3,
+        mapper: (x) => x.toString(),
+        possibleGroups: [0, 1, 2],
+        name: "mod3-equals");
+    final source = Stream.fromIterable([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    final compiledGraph = graph.compile({startNode: source});
+    print(graph.graph.toDotString());
+    final rest0 = compiledGraph.forNode(grouping.mapNode(0));
+    expect(rest0, emitsInOrder(['3', '6', '9']));
+    final rest1 = compiledGraph.forNode(grouping.mapNode(1));
+    expect(rest1, emitsInOrder(['1', '4', '7']));
+    final rest2 = compiledGraph.forNode(grouping.mapNode(2));
+    expect(rest2, emitsInOrder(['2', '5', '8']));
   });
   test("Allows retrieving Streams by name", () {
     final graph = new StreamGraph();
@@ -123,12 +142,15 @@ void main() {
         graph.addMapping<int, int>(startNode1, (x) => x * 2, 'doubled');
     final tripledNode2 =
         graph.addMapping<int, int>(startNode2, (x) => x * 3, 'tripled');
+    final doubledTripledNode = graph.addMapping<int, int>(
+        doubledNode1, (x) => x * 3, 'doubledTripled');
     final source1 = Stream.periodic(Duration(milliseconds: 13), (x) => x + 1);
     final source2 = Stream.periodic(Duration(milliseconds: 17), (x) => x + 100);
     final mergeDoubledAndTripled = graph.combineAll<int, int>(<StreamNode<int>>[
       doubledNode1,
+      doubledTripledNode,
       tripledNode2
-    ], (streams) => Rx.merge<int>(streams), name: "merge");
+    ], Rx.merge<int>, name: "merge");
     File("delete_me.dot").writeAsString(graph.graph.toDotString());
     final compiledGraph =
         graph.compile({startNode1: source1, startNode2: source2});

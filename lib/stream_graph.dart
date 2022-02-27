@@ -59,6 +59,23 @@ class Partitioning<T> extends StreamNode<T> {
       : super(name: name);
 }
 
+class Grouping<T, K> {
+  StreamNode<T> node;
+  K Function(T) grouper;
+  Map<K, FilterNode<T>> groupNodes;
+  Grouping(this.node, this.grouper, this.groupNodes);
+  FilterNode<T> groupNode(K key) => groupNodes[key]!;
+}
+
+class GroupMapping<T, K, V> {
+  StreamNode<T> node;
+  K Function(T) grouper;
+  Map<K, StreamNode<V>> groupNodes;
+  V Function(T) mapper;
+  GroupMapping(this.node, this.grouper, this.groupNodes, this.mapper);
+  StreamNode<V> mapNode(K key) => groupNodes[key]!;
+}
+
 class CombineAllNode<S, T> extends StreamNode<T> {
   final List<StreamNode<S>> inputs;
   final Stream<T> Function(List<Stream<S>>) combinator;
@@ -134,7 +151,7 @@ class StreamGraph {
     return Partitioning(matches: matchesNode, nonMatches: nonMatchesNode);
   }
 
-  combineAll<S, T>(
+  CombineAllNode<S, T> combineAll<S, T>(
       List<StreamNode<S>> list, Stream<T> Function(List<Stream<S>>) combinator,
       {String? name}) {
     final mergeNode = CombineAllNode<S, T>(list, combinator, name: name);
@@ -152,6 +169,41 @@ class StreamGraph {
     addNode(n, name);
     graph.addEdges(node, {n});
     return n;
+  }
+
+  Grouping<T, K> addGrouping<T, K>(StreamNode<T> node, K Function(T) grouper,
+      {required List<K> possibleGroups, String? name}) {
+    final groupNodes = {
+      for (var key in possibleGroups)
+        key: FilterNode<T>(node, (T e) => grouper(e) == key, name: '$name-$key')
+    };
+    groupNodes.values
+        .forEach((groupNode) => addNode(groupNode, groupNode.name));
+    graph.addEdges(node, groupNodes.values.toSet());
+    return Grouping<T, K>(node, grouper, groupNodes);
+  }
+
+  GroupMapping<T, K, V> addGroupMapping<T, K, V>(StreamNode<T> node,
+      {required K Function(T) grouper,
+      required V Function(T) mapper,
+      required List<K> possibleGroups,
+      String? name}) {
+    final groupNodes = {
+      for (var key in possibleGroups)
+        key: FilterNode<T>(node, (T e) => grouper(e) == key, name: '$name-$key')
+    };
+    groupNodes.values
+        .forEach((groupNode) => addNode(groupNode, groupNode.name));
+    final mapNodes = {
+      for (var key in possibleGroups)
+        key: addMapping(
+            groupNodes[key]!, (T e) => mapper(e), '$name-$key-mapping')
+    };
+    graph.addEdges(node, groupNodes.values.toSet());
+    possibleGroups.forEach((element) {
+      graph.addEdges(groupNodes[element]!, {mapNodes[element]!});
+    });
+    return GroupMapping<T, K, V>(node, grouper, mapNodes, mapper);
   }
 }
 
@@ -189,7 +241,7 @@ class CompiledStreamGraph {
       } else {
         throw UnimplementedError('$node');
       }
-      if (newStream != null && node is StreamNode) {
+      if (newStream != null) {
         _addStreamForNode(newStream, node);
       }
       //});
