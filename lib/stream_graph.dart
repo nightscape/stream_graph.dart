@@ -76,6 +76,16 @@ class GroupMapping<T, K, V> {
   StreamNode<V> mapNode(K key) => groupNodes[key]!;
 }
 
+class Combine2Node<R, S, T> extends StreamNode<T> {
+  final StreamNode<R> stream1;
+  final StreamNode<S> stream2;
+  final Stream<T> Function(Stream<R>, Stream<S>) combinator;
+  Combine2Node(this.stream1, this.stream2, this.combinator, {String? name})
+      : super(name: name);
+  Stream<T> transformStreams(Map<StreamNode, Stream> inputs) => combinator(
+      inputs[this.stream1]!.cast<R>(), inputs[this.stream2]!.cast<S>());
+}
+
 class CombineAllNode<S, T> extends StreamNode<T> {
   final List<StreamNode<S>> inputs;
   final Stream<T> Function(List<Stream<S>>) combinator;
@@ -149,6 +159,20 @@ class StreamGraph {
     graph.addEdges(input, {matchesNode});
     graph.addEdges(input, {nonMatchesNode});
     return Partitioning(matches: matchesNode, nonMatches: nonMatchesNode);
+  }
+
+  Combine2Node<R, S, T> combine2<R, S, T>(
+      StreamNode<R> stream1,
+      StreamNode<S> stream2,
+      Stream<T> Function(Stream<R>, Stream<S>) combinator,
+      {String? name}) {
+    final mergeNode =
+        Combine2Node<R, S, T>(stream1, stream2, combinator, name: name);
+    addNode(mergeNode, name);
+    for (final node in [stream1, stream2]) {
+      graph.addEdges(node, {mergeNode});
+    }
+    return mergeNode;
   }
 
   CombineAllNode<S, T> combineAll<S, T>(
@@ -236,6 +260,8 @@ class CompiledStreamGraph {
       } else if (node is FilterNode) {
         newStream = node.transformStreams(streams);
       } else if (node is CombineAllNode) {
+        newStream = node.transformStreams(streams);
+      } else if (node is Combine2Node) {
         newStream = node.transformStreams(streams);
       } else if (node is ConversionNode) {
       } else {

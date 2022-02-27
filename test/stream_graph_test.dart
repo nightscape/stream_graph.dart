@@ -162,6 +162,44 @@ void main() {
         completion(allOf(containsAllInOrder([300, 303, 306, 309, 312]),
             containsAllInOrder([2, 4, 6, 8, 10, 12]))));
   });
+  test("Allows working with multiple input streams of different types",
+      () async {
+    final graph = new StreamGraph();
+    final startNode1 = graph.addStartNode<int>(name: "s1");
+    final startNode2 = graph.addStartNode<int>(name: "s2");
+    final doubledNode1 = graph.addMapping<int, String>(
+        startNode1, (x) => x.toString(), 'string');
+    final tripledNode2 =
+        graph.addMapping<int, int>(startNode2, (x) => x * 3, 'tripled');
+    final source1 = Stream.periodic(Duration(milliseconds: 10), (x) => x + 1);
+    final source2 = Stream.periodic(Duration(milliseconds: 50), (x) => x + 100);
+    final mergeDoubledAndTripled = graph.combine2<int, String, String>(
+        tripledNode2,
+        doubledNode1,
+        (s1, s2) => Rx.combineLatest2<int, String, String>(
+            s1, s2, (e1, e2) => "${e1}${e2}"),
+        name: "merge");
+    File("delete_me.dot").writeAsString(graph.graph.toDotString());
+    final compiledGraph =
+        graph.compile({startNode1: source1, startNode2: source2});
+    final mergedStream = compiledGraph.forNode(mergeDoubledAndTripled).toList();
+    await Future.delayed(Duration(milliseconds: 100));
+    compiledGraph.close();
+    expect(
+        mergedStream,
+        completion(
+          containsAllInOrder([
+            '3004',
+            '3005',
+            '3006',
+            '3007',
+            '3008',
+            '3009',
+            '3039',
+            '30310',
+          ]),
+        ));
+  });
   test("Allows transforming generated Streams", () async {
     var graph = new StreamGraph();
     final startNode = graph.addStartNode<int>(pauseable: true, name: 'start');
