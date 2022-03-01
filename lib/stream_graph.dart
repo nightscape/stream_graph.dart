@@ -150,7 +150,7 @@ class StreamGraph {
           name);
 
   Partitioning<T> addPartitioning<T>(
-      SourceNode<T> input, bool Function(T x) predicate,
+      StreamNode<T> input, bool Function(T x) predicate,
       {String? nameForMatches, String? nameForNonMatches}) {
     final matchesNode = FilterNode<T>(input, predicate);
     final nonMatchesNode = FilterNode<T>(input, (T e) => !predicate(e));
