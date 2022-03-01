@@ -134,7 +134,7 @@ class StreamGraph {
 
   TransformNode<S, T> addTransformer<S, T>(
       StreamNode<S> input, StreamTransformer<S, T> streamTransformer,
-      [String? name]) {
+      {String? name}) {
     final node = TransformNode<S, T>(input, streamTransformer, name: name);
     addNode(node, name);
     graph.addEdges(input, {node});
@@ -142,12 +142,12 @@ class StreamGraph {
   }
 
   StreamNode<T> addMapping<S, T>(StreamNode<S> input, T Function(S) mapping,
-          [String? name]) =>
+          {String? name}) =>
       addTransformer<S, T>(
           input,
           StreamTransformer<S, T>.fromBind(
               (Stream<S> input) => input.map(mapping)),
-          name);
+          name: name);
 
   Partitioning<T> addPartitioning<T>(
       StreamNode<T> input, bool Function(T x) predicate,
@@ -220,8 +220,8 @@ class StreamGraph {
         .forEach((groupNode) => addNode(groupNode, groupNode.name));
     final mapNodes = {
       for (var key in possibleGroups)
-        key: addMapping(
-            groupNodes[key]!, (T e) => mapper(e), '$name-$key-mapping')
+        key: addMapping(groupNodes[key]!, (T e) => mapper(e),
+            name: '$name-$key-mapping')
     };
     graph.addEdges(node, groupNodes.values.toSet());
     possibleGroups.forEach((element) {

@@ -72,9 +72,10 @@ void main() {
     final graph = new StreamGraph();
     final startNode = graph.addStartNode<int>();
     final doubledNode =
-        graph.addMapping<int, int>(startNode, (x) => x * 2, 'doubled');
-    graph.addMapping<int, int>(startNode, (x) => x * 3, 'tripled');
-    graph.addMapping<int, int>(doubledNode, (x) => x * 3, 'doubledTripled');
+        graph.addMapping<int, int>(startNode, (x) => x * 2, name: 'doubled');
+    graph.addMapping<int, int>(startNode, (x) => x * 3, name: 'tripled');
+    graph.addMapping<int, int>(doubledNode, (x) => x * 3,
+        name: 'doubledTripled');
     final source = Stream.fromIterable([1, 2, 3]);
     final compiledGraph = graph.compile({startNode: source});
     final doubledStream = compiledGraph['doubled'];
@@ -89,7 +90,7 @@ void main() {
     final graph = new StreamGraph();
     final startNode = graph.addStartNode<int>();
     final doubledNode =
-        graph.addMapping<int, int>(startNode, (x) => x * 2, 'doubled');
+        graph.addMapping<int, int>(startNode, (x) => x * 2, name: 'doubled');
     final doubleTripledNode =
         graph.addMapping<int, int>(doubledNode, (x) => x * 3);
     final source = Stream.fromIterable([1, 2, 3]);
@@ -107,7 +108,7 @@ void main() {
     final graph = new StreamGraph();
     final startNode = graph.addStartNode<int>(pauseable: true);
     final doubledNode =
-        graph.addMapping<int, int>(startNode, (x) => x * 2, 'doubled');
+        graph.addMapping<int, int>(startNode, (x) => x * 2, name: 'doubled');
     final controller = StreamController<int>();
     final compiledGraph = graph.compile({startNode: controller.stream});
     final doubledStream = compiledGraph.forNode(doubledNode);
@@ -122,7 +123,7 @@ void main() {
     final graph = new StreamGraph();
     final startNode = graph.addStartNode<int>();
     final doubledNode =
-        graph.addMapping<int, int>(startNode, (x) => x * 2, 'doubled');
+        graph.addMapping<int, int>(startNode, (x) => x * 2, name: 'doubled');
     final source = Stream.periodic(Duration(milliseconds: 10), (x) => x + 1);
     final compiledGraph = graph.compile({startNode: source});
     final originalStream = compiledGraph.forNode(startNode).toList();
@@ -139,11 +140,12 @@ void main() {
     final startNode1 = graph.addStartNode<int>(name: "s1");
     final startNode2 = graph.addStartNode<int>(name: "s2");
     final doubledNode1 =
-        graph.addMapping<int, int>(startNode1, (x) => x * 2, 'doubled');
+        graph.addMapping<int, int>(startNode1, (x) => x * 2, name: 'doubled');
     final tripledNode2 =
-        graph.addMapping<int, int>(startNode2, (x) => x * 3, 'tripled');
+        graph.addMapping<int, int>(startNode2, (x) => x * 3, name: 'tripled');
     final doubledTripledNode = graph.addMapping<int, int>(
-        doubledNode1, (x) => x * 3, 'doubledTripled');
+        doubledNode1, (x) => x * 3,
+        name: 'doubledTripled');
     final source1 = Stream.periodic(Duration(milliseconds: 13), (x) => x + 1);
     final source2 = Stream.periodic(Duration(milliseconds: 17), (x) => x + 100);
     final mergeDoubledAndTripled = graph.combineAll<int, int>(<StreamNode<int>>[
@@ -168,9 +170,10 @@ void main() {
     final startNode1 = graph.addStartNode<int>(name: "s1");
     final startNode2 = graph.addStartNode<int>(name: "s2");
     final doubledNode1 = graph.addMapping<int, String>(
-        startNode1, (x) => x.toString(), 'string');
+        startNode1, (x) => x.toString(),
+        name: 'string');
     final tripledNode2 =
-        graph.addMapping<int, int>(startNode2, (x) => x * 3, 'tripled');
+        graph.addMapping<int, int>(startNode2, (x) => x * 3, name: 'tripled');
     final source1 = Stream.periodic(Duration(milliseconds: 10), (x) => x + 1);
     final source2 = Stream.periodic(Duration(milliseconds: 50), (x) => x + 100);
     final mergeDoubledAndTripled = graph.combine2<int, String, String>(
@@ -204,7 +207,7 @@ void main() {
     var graph = new StreamGraph();
     final startNode = graph.addStartNode<int>(pauseable: true, name: 'start');
     final doubledNode =
-        graph.addMapping<int, int>(startNode, (x) => x * 2, 'doubled');
+        graph.addMapping<int, int>(startNode, (x) => x * 2, name: 'doubled');
     final source = Stream.fromIterable([1, 2, 3]);
     final StreamController<String> sideChannel = StreamController<String>();
 
