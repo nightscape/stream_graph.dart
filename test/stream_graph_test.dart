@@ -126,8 +126,8 @@ void main() {
         graph.addMapping<int, int>(startNode, (x) => x * 2, name: 'doubled');
     final source = Stream.periodic(Duration(milliseconds: 10), (x) => x + 1);
     final compiledGraph = graph.compile({startNode: source});
-    final originalStream = compiledGraph.forNode(startNode).toList();
-    final doubledStream = compiledGraph.forNode(doubledNode).toList();
+    final originalStream = compiledGraph.forNode(startNode)!.toList();
+    final doubledStream = compiledGraph.forNode(doubledNode)!.toList();
     await Future.delayed(Duration(milliseconds: 300));
     compiledGraph.close();
     expect(originalStream.then((value) => value.take(10)),
@@ -156,7 +156,8 @@ void main() {
     File("delete_me.dot").writeAsString(graph.graph.toDotString());
     final compiledGraph =
         graph.compile({startNode1: source1, startNode2: source2});
-    final mergedStream = compiledGraph.forNode(mergeDoubledAndTripled).toList();
+    final mergedStream =
+        compiledGraph.forNode(mergeDoubledAndTripled)!.toList();
     await Future.delayed(Duration(milliseconds: 100));
     compiledGraph.close();
     expect(
@@ -185,7 +186,8 @@ void main() {
     File("delete_me.dot").writeAsString(graph.graph.toDotString());
     final compiledGraph =
         graph.compile({startNode1: source1, startNode2: source2});
-    final mergedStream = compiledGraph.forNode(mergeDoubledAndTripled).toList();
+    final mergedStream =
+        compiledGraph.forNode(mergeDoubledAndTripled)!.toList();
     await Future.delayed(Duration(milliseconds: 100));
     compiledGraph.close();
     expect(
@@ -214,8 +216,8 @@ void main() {
     final compiledGraph = graph.compile({startNode: source},
         doOnData: (event, node) => sideChannel.add("${node.name}: $event"));
     final sideChannelFutureList = sideChannel.stream.toList();
-    final stream1List = compiledGraph.forNode(startNode).toList();
-    final stream2List = compiledGraph.forNode(doubledNode).toList();
+    final stream1List = compiledGraph.forNode(startNode)!.toList();
+    final stream2List = compiledGraph.forNode(doubledNode)!.toList();
     await Future.delayed(Duration(milliseconds: 1));
     compiledGraph.close();
     expect(stream1List, completion([1, 2, 3]));

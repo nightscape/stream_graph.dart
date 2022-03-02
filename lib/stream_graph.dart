@@ -279,20 +279,24 @@ class CompiledStreamGraph {
     streams[node] = transformedStream.asBroadcastStream();
   }
 
-  Stream<S> forNode<S>(StreamNode<S> node) => streams[node]!.map((e) => e as S);
-  Stream<S> forNodeName<S>(String name) =>
-      forNode<S>(nodesByName[name]! as StreamNode<S>);
-  Stream? operator [](String nodeName) =>
-      forNode(nodesByName[nodeName]! as StreamNode);
+  Stream<S>? forNode<S>(StreamNode<S> node) =>
+      streams[node]!.map((e) => e as S);
+  Stream<S>? forNodeName<S>(String name) => nodesByName.containsKey(name)
+      ? forNode<S>(nodesByName[name] as StreamNode<S>)
+      : null;
+  Stream? operator [](String nodeName) => forNodeName(nodeName);
   forEachStartStreamSubscription(void Function(StreamSubscription) f) {
     startStreams.values.forEach((e) => f(e.value));
   }
 
-  T outputFor<T>(ConversionNode<dynamic, T> node) =>
-      node.transformStream(streams[node.input]!);
+  T? outputFor<T>(ConversionNode<dynamic, T> node) =>
+      streams.containsKey(node.input)
+          ? node.transformStream(streams[node.input]!)
+          : null;
 
-  T outputForName<T>(String name) =>
-      outputFor<T>(this.nodesByName[name] as ConversionNode<dynamic, T>);
+  T? outputForName<T>(String name) => nodesByName.containsKey(name)
+      ? outputFor(nodesByName[name] as ConversionNode<dynamic, T>)
+      : null;
 
   forEachStartStreamController(void Function(StreamController) f) {
     startStreams.values.forEach((e) => f(e.key));
