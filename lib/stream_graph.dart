@@ -152,8 +152,9 @@ class StreamGraph {
   Partitioning<T> addPartitioning<T>(
       StreamNode<T> input, bool Function(T x) predicate,
       {String? nameForMatches, String? nameForNonMatches}) {
-    final matchesNode = FilterNode<T>(input, predicate);
-    final nonMatchesNode = FilterNode<T>(input, (T e) => !predicate(e));
+    final matchesNode = FilterNode<T>(input, predicate, name: nameForMatches);
+    final nonMatchesNode =
+        FilterNode<T>(input, (T e) => !predicate(e), name: nameForNonMatches);
     addNode(matchesNode, nameForMatches);
     addNode(nonMatchesNode, nameForNonMatches);
     graph.addEdges(input, {matchesNode});
