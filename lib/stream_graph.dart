@@ -87,13 +87,30 @@ class Combine2Node<R, S, T> extends StreamNode<T> {
 }
 
 class CombineAllNode<S, T> extends StreamNode<T> {
-  final List<StreamNode<S>> inputs;
+  final List<StreamNode<S>> Function(StreamGraph) selector;
   final Stream<T> Function(List<Stream<S>>) combinator;
-  CombineAllNode(this.inputs, this.combinator, {String? name})
+  List<StreamNode<S>>? inputs;
+  CombineAllNode(this.selector, this.combinator, {String? name})
       : super(name: name);
+  void finalize(StreamGraph graph) {
+    inputs = selector(graph);
+    for (final node in inputs!) {
+      graph.graph.addEdges(node, {this});
+    }
+  }
+
   Stream<T> transformStreams(Map<StreamNode, Stream> inputs) => combinator(
-      this.inputs.map((i) => inputs[i]! as Stream<S>).toList(growable: false));
+      this.inputs!.map((i) => inputs[i]! as Stream<S>).toList(growable: false));
 }
+
+List<StreamNode<S>> Function(StreamGraph) fromList<S>(
+        List<StreamNode<S>> nodes) =>
+    (_) => nodes;
+List<StreamNode<S>> Function(StreamGraph) byName<S>(RegExp regExp) =>
+    (graph) => graph.graph.vertices
+        .where((v) => v is StreamNode<S> && regExp.hasMatch(v.name ?? ""))
+        .cast<StreamNode<S>>()
+        .toList(growable: false);
 
 class ConversionNode<S, T> extends GraphNode {
   final StreamNode<S> input;
@@ -112,12 +129,21 @@ class StreamGraph {
     graph.comparator = null;
   }
 
+  void finalize() {
+    for (final node in graph.vertices) {
+      if (node is CombineAllNode) {
+        node.finalize(this);
+      }
+    }
+  }
+
   CompiledStreamGraph compile(Map<SourceNode, Stream> binding,
-          {StreamTransformer<T, T> Function<T>(StreamNode<T> node)?
-              transformStream,
-          void Function(dynamic, StreamNode)? doOnData}) =>
-      CompiledStreamGraph(graph, nodeNames, binding,
-          transformStream: transformStream, doOnData: doOnData);
+      {StreamTransformer<T, T> Function<T>(StreamNode<T> node)? transformStream,
+      void Function(dynamic, StreamNode)? doOnData}) {
+    this.finalize();
+    return CompiledStreamGraph(graph, nodeNames, binding,
+        transformStream: transformStream, doOnData: doOnData);
+  }
 
   void addNode(GraphNode node, String? name) {
     if (name != null) {
@@ -176,15 +202,18 @@ class StreamGraph {
     return mergeNode;
   }
 
-  CombineAllNode<S, T> combineAll<S, T>(
-      List<StreamNode<S>> list, Stream<T> Function(List<Stream<S>>) combinator,
+  CombineAllNode<S, T> combineAll<S, T>(List<StreamNode<S>> list,
+          Stream<T> Function(List<Stream<S>>) combinator,
+          {String? name}) =>
+      combineAllFromSelector(fromList(list), combinator, name: name);
+
+  CombineAllNode<S, T> combineAllFromSelector<S, T>(
+      List<StreamNode<S>> Function(StreamGraph) selector,
+      Stream<T> Function(List<Stream<S>>) combinator,
       {String? name}) {
-    final mergeNode = CombineAllNode<S, T>(list, combinator, name: name);
-    addNode(mergeNode, name);
-    for (final node in list) {
-      graph.addEdges(node, {mergeNode});
-    }
-    return mergeNode;
+    final comb = CombineAllNode<S, T>(selector, combinator, name: name);
+    addNode(comb, name);
+    return comb;
   }
 
   ConversionNode<S, T> convert<S, T>(

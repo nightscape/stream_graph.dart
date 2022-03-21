@@ -165,6 +165,30 @@ void main() {
         completion(allOf(containsAllInOrder([300, 303, 306, 309, 312]),
             containsAllInOrder([2, 4, 6, 8, 10, 12]))));
   });
+  test("Allows combining multiple input streams by name", () async {
+    final graph = new StreamGraph();
+    final startNode1 = graph.addStartNode<int>(name: "s1");
+    final startNode2 = graph.addStartNode<int>(name: "s2");
+    final doubledNode1 =
+        graph.addMapping<int, int>(startNode1, (x) => x * 2, name: 'doubled');
+    final tripledNode2 =
+        graph.addMapping<int, int>(startNode2, (x) => x * 3, name: 'tripled');
+    final doubledTripledNode = graph.addMapping<int, int>(
+        doubledNode1, (x) => x * 3,
+        name: 'doubledTripled');
+    final source1 = Stream.periodic(Duration(milliseconds: 13), (x) => x + 1);
+    final source2 = Stream.periodic(Duration(milliseconds: 17), (x) => x + 100);
+    final regex = RegExp(r'^doubled');
+    final mergeDoubled = graph.combineAllFromSelector<int, int>(
+        byName(regex), Rx.merge<int>,
+        name: "merge");
+    final compiledGraph =
+        graph.compile({startNode1: source1, startNode2: source2});
+    final mergedStream = compiledGraph.forNode(mergeDoubled)!.toList();
+    await Future.delayed(Duration(milliseconds: 100));
+    compiledGraph.close();
+    expect(mergedStream, completion(containsAllInOrder([2, 4, 6, 8, 10, 12])));
+  });
   test("Allows working with multiple input streams of different types",
       () async {
     final graph = new StreamGraph();
