@@ -3,7 +3,6 @@ import 'dart:io';
 
 import 'package:rxdart/rxdart.dart';
 import 'package:stream_graph/dot_visualization.dart';
-import 'package:stream_graph/schedule.dart';
 import 'package:stream_graph/stream_graph.dart';
 import 'package:stream_graph/stream_schedule.dart';
 import 'package:test/test.dart';
@@ -238,8 +237,10 @@ void main() {
     final startNode = graph.addStartNode<int>(name: "s1");
     final scheduleNode =
         graph.addScheduleNode<int>(startNode, name: "s2", schedule: [
-      Schedule.emit(1, Duration(milliseconds: 200), after: 0),
-      Schedule.emit(2, Duration(milliseconds: 300), after: 1)
+      Schedule.emission(Duration(milliseconds: 200),
+          after: observingElement(0), emit: 1),
+      Schedule.emission(Duration(milliseconds: 300),
+          after: observingElement(1), emit: 2)
     ]);
     final compiledGraph = graph
         .compile({startNode: TimerStream<int>(0, Duration(milliseconds: 100))});

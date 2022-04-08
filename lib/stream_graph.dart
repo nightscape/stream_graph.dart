@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:directed_graph/directed_graph.dart';
 import 'package:rxdart/rxdart.dart';
-import 'package:stream_graph/schedule.dart';
 import 'package:stream_graph/stream_schedule.dart';
 
 abstract class GraphNode extends Comparable<dynamic> {
@@ -159,11 +158,17 @@ class StreamGraph {
       addNode(SourceNode<T>(pauseable: pauseable, name: name), name);
 
   TransformNode<T, T> addScheduleNode<T>(StreamNode<T> input,
-          {String? name, required Iterable<Stream<T> Function(T)> schedule}) =>
+          {String? name, required Iterable<Schedule<T>> schedule}) =>
       addTransformer(
-          input,
-          StreamTransformer.fromBind(
-              (s) => s.asyncExpandMultipleRecursive(schedule)),
+          input, StreamTransformer.fromBind((s) => schedule.stream(s)),
+          name: name);
+
+  TransformNode<Lifecycle<T>, Lifecycle<T>> addLifecycleScheduleNode<T>(
+          StreamNode<Lifecycle<T>> input,
+          {String? name,
+          required Iterable<Schedule<Lifecycle<T>>> schedule}) =>
+      addTransformer(
+          input, StreamTransformer.fromBind((s) => schedule.lifecycleStream(s)),
           name: name);
 
   TransformNode<S, T> addTransformer<S, T>(

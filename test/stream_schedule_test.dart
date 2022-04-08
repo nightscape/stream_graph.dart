@@ -1,7 +1,5 @@
 import 'dart:async';
 
-import 'package:rxdart/rxdart.dart';
-import 'package:stream_graph/schedule.dart';
 import 'package:stream_graph/stream_schedule.dart';
 import 'package:test/test.dart';
 
@@ -12,21 +10,21 @@ void main() {
       Duration(milliseconds: seconds * 1000 ~/ speedup);
   Duration forSeconds(int seconds) =>
       Duration(milliseconds: seconds * 1000 ~/ speedup);
-  Stream<Lifecycle<int>> startStream() =>
-      TimerStream(Lifecycle.start(0), afterSeconds(10));
-  final session = [
-    Schedule.emitStart(1, afterSeconds(20), after: Lifecycle.start(0)).call,
-    Schedule.emitInterval(2, afterSeconds(30),
-        after: Lifecycle.start(1),
-        endWhen: () => Future.delayed(afterSeconds(40))).call,
-    Schedule.emitStart(3, afterSeconds(50), after: Lifecycle.stop(2)).call,
+  final session = <Schedule<Lifecycle<int>>>[
+    Schedule.start(afterSeconds(10), after: streamStart(), emit: 0),
+    Schedule.start(afterSeconds(20),
+        after: observingElement(Lifecycle.start(0)), emit: 1),
+    Schedule.interval<int>(afterSeconds(30),
+        after: observingElement(Lifecycle.start(1)),
+        emit: 2,
+        endWhen: () => Future.delayed(afterSeconds(40))),
+    Schedule.start(afterSeconds(50),
+        after: observingElement(Lifecycle.stop(2)), emit: 3),
   ];
   group("StreamSchedule", () {
     test('Converts Schedules into a correctly timed Stream of elements',
         () async {
-      final outputStream = startStream()
-          .asyncExpandMultipleRecursive(session)
-          .absoluteTimeInterval();
+      final outputStream = session.lifecycleStream().absoluteTimeInterval();
       expect(
           outputStream,
           emitsRoughlyAfterSeconds([
@@ -42,8 +40,8 @@ void main() {
         'Converts Schedules into a correctly timed Stream of elements, even with breaks',
         () async {
       final elementStreamController = StreamController<Lifecycle<int>>();
-      final subscription = startStream()
-          .asyncExpandMultipleRecursive(session)
+      final subscription = session
+          .lifecycleStream()
           .listen((event) => elementStreamController.add(event));
       subscription.pause();
       final outputStream =
