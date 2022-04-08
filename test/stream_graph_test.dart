@@ -238,8 +238,8 @@ void main() {
     final startNode = graph.addStartNode<int>(name: "s1");
     final scheduleNode =
         graph.addScheduleNode<int>(startNode, name: "s2", schedule: [
-      Schedule.emit<int>(1, Duration(milliseconds: 200), after: 0),
-      Schedule.emit<int>(2, Duration(milliseconds: 300), after: 1)
+      Schedule.emit(1, Duration(milliseconds: 200), after: 0),
+      Schedule.emit(2, Duration(milliseconds: 300), after: 1)
     ]);
     final compiledGraph = graph
         .compile({startNode: TimerStream<int>(0, Duration(milliseconds: 100))});
