@@ -4,7 +4,10 @@ import 'dart:io';
 import 'package:rxdart/rxdart.dart';
 import 'package:stream_graph/dot_visualization.dart';
 import 'package:stream_graph/stream_graph.dart';
+import 'package:stream_graph/stream_schedule.dart';
 import 'package:test/test.dart';
+
+import 'absolute_time_interval.dart';
 
 void main() {
   test(
@@ -228,6 +231,26 @@ void main() {
             '30310',
           ]),
         ));
+  });
+  test("Allows scheduling items in a stream", () async {
+    final graph = new StreamGraph();
+    final startNode = graph.addScheduleNode<int>(name: "s1", schedule: [
+      Schedule(0, Duration(milliseconds: 100)),
+      Schedule.emit(1, Duration(milliseconds: 200), after: 0),
+      Schedule.emit(2, Duration(milliseconds: 300), after: 1)
+    ]);
+    final compiledGraph = graph.compile({});
+    final doubledStream =
+        compiledGraph.forNode(startNode)!.absoluteTimeInterval().toList();
+    await Future.delayed(Duration(milliseconds: 700));
+    compiledGraph.close();
+    expect(
+        doubledStream,
+        completion(containsAllInOrder([
+          afterRoughlyMillis<int>(100, 0),
+          afterRoughlyMillis<int>(300, 1),
+          afterRoughlyMillis<int>(600, 2),
+        ])));
   });
   test("Allows transforming generated Streams", () async {
     var graph = new StreamGraph();

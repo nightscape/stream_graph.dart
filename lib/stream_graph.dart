@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:directed_graph/directed_graph.dart';
 import 'package:rxdart/rxdart.dart';
+import 'package:stream_graph/stream_schedule.dart';
 
 abstract class GraphNode extends Comparable<dynamic> {
   String? name;
@@ -32,6 +33,16 @@ class SourceNode<T> extends StreamNode<T> {
   MapEntry<StreamController<T>, StreamSubscription<T>> attach(
           Stream<T> source) =>
       MapEntry(controller, source.listen(controller.add));
+}
+
+class ScheduleNode<T> extends SourceNode<T> {
+  final List<Schedule<T>> schedule;
+  ScheduleNode(this.schedule, {String? name}) : super(name: name);
+
+  MapEntry<StreamController<T>, StreamSubscription<T>> start() {
+    final scheduledStream = StreamSchedule<T>().scheduleStream(schedule);
+    return attach(scheduledStream);
+  }
 }
 
 class TransformNode<S, T> extends StreamNode<T> {
@@ -145,18 +156,20 @@ class StreamGraph {
         transformStream: transformStream, doOnData: doOnData);
   }
 
-  void addNode(GraphNode node, String? name) {
+  T addNode<T extends GraphNode>(T node, String? name) {
     if (name != null) {
       nodeNames[node] = name;
     }
     graph.addEdges(node, {});
-  }
-
-  SourceNode<T> addStartNode<T>({String? name, bool pauseable = false}) {
-    final node = SourceNode<T>(pauseable: pauseable, name: name);
-    addNode(node, name);
     return node;
   }
+
+  SourceNode<T> addStartNode<T>({String? name, bool pauseable = false}) =>
+      addNode(SourceNode<T>(pauseable: pauseable, name: name), name);
+
+  ScheduleNode<T> addScheduleNode<T>(
+          {String? name, required List<Schedule<T>> schedule}) =>
+      addNode(ScheduleNode<T>(schedule, name: name), name);
 
   TransformNode<S, T> addTransformer<S, T>(
       StreamNode<S> input, StreamTransformer<S, T> streamTransformer,
@@ -276,14 +289,17 @@ class CompiledStreamGraph {
       Map<SourceNode, Stream> binding,
       {this.transformStream, this.doOnData}) {
     nodesByName = {for (var e in nodeNames.entries) e.value: e.key};
-    startStreams =
-        binding.map((key, stream) => MapEntry(key, key.attach(stream)));
+    startStreams = binding
+        .map((key, stream) => MapEntry(key, key.attach(stream)))
+      ..addEntries(nodeNames.keys
+          .whereType<ScheduleNode>()
+          .map((s) => MapEntry(s, s.start())));
     startStreams.forEach((key, value) {
       _addStreamForNode(value.key.stream, key);
     });
     graph.sortedTopologicalOrdering!.whereType<StreamNode>().forEach((node) {
       Stream? newStream;
-      if (node is SourceNode) {
+      if (node is SourceNode || node is ScheduleNode) {
         newStream = startStreams[node]!.key.stream;
       } else if (node is TransformNode) {
         newStream = node.transformStreams(streams);
