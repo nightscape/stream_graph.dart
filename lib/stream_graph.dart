@@ -159,12 +159,11 @@ class StreamGraph {
       addNode(SourceNode<T>(pauseable: pauseable, name: name), name);
 
   TransformNode<T, T> addScheduleNode<T>(StreamNode<T> input,
-          {String? name,
-          required Iterable<Iterable<Future<T>> Function(T)> schedule}) =>
+          {String? name, required Iterable<Stream<T> Function(T)> schedule}) =>
       addTransformer(
           input,
           StreamTransformer.fromBind(
-              (s) => s.asyncMapMultipleRecursive(schedule)),
+              (s) => s.asyncExpandMultipleRecursive(schedule)),
           name: name);
 
   TransformNode<S, T> addTransformer<S, T>(

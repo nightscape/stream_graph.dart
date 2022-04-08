@@ -4,61 +4,63 @@ import 'package:rxdart/rxdart.dart';
 import 'package:stream_graph/schedule.dart';
 import 'package:stream_graph/stream_schedule.dart';
 import 'package:test/test.dart';
-import 'dart:mirrors';
 
 import 'absolute_time_interval.dart';
 
-typedef Output = int;
-typedef Input = int;
 void main() {
   Duration afterSeconds(int seconds) =>
       Duration(milliseconds: seconds * 1000 ~/ speedup);
   Duration forSeconds(int seconds) =>
       Duration(milliseconds: seconds * 1000 ~/ speedup);
-  Stream<int> startStream() => TimerStream(0, afterSeconds(100));
+  Stream<Lifecycle<int>> startStream() =>
+      TimerStream(Lifecycle.start(0), afterSeconds(10));
   final session = [
-    Schedule.emit<int>(1, afterSeconds(200), after: 0),
-    Schedule.emit<int>(2, afterSeconds(300), after: 1),
-    Schedule.emit<int>(3, afterSeconds(400), after: 2),
+    Schedule.emitStart<int>(1, afterSeconds(20), after: Lifecycle.start(0)),
+    Schedule.emitInterval<int>(2, afterSeconds(30),
+        after: Lifecycle.start(1),
+        endWhen: () => Future.delayed(afterSeconds(40))),
+    Schedule.emitStart<int>(3, afterSeconds(50), after: Lifecycle.stop(2)),
   ];
   group("StreamSchedule", () {
     test('Converts Schedules into a correctly timed Stream of elements',
         () async {
       final outputStream = startStream()
-          .asyncMapMultipleRecursive(session)
+          .asyncExpandMultipleRecursive(session)
           .absoluteTimeInterval();
       expect(
           outputStream,
           emitsRoughlyAfterSeconds([
-            MapEntry(100, 0),
-            MapEntry(300, 1),
-            MapEntry(600, 2),
-            MapEntry(1000, 3),
+            MapEntry(10, Lifecycle.start(0)),
+            MapEntry(30, Lifecycle.start(1)),
+            MapEntry(60, Lifecycle.start(2)),
+            MapEntry(100, Lifecycle.stop(2)),
+            MapEntry(150, Lifecycle.start(3)),
           ]));
     });
     test(
         'Converts Schedules into a correctly timed Stream of elements, even with breaks',
         () async {
-      final elementStreamController = StreamController<Output>();
+      final elementStreamController = StreamController<Lifecycle<int>>();
       final subscription = startStream()
-          .asyncMapMultipleRecursive(session)
+          .asyncExpandMultipleRecursive(session)
           .listen((event) => elementStreamController.add(event));
       subscription.pause();
       final outputStream =
           elementStreamController.stream.absoluteTimeInterval();
       final outputList = outputStream.toList();
       subscription.resume();
-      await Future.delayed(forSeconds(200), subscription.pause);
-      await Future.delayed(forSeconds(900), subscription.resume);
-      await Future.delayed(forSeconds(900), subscription.cancel);
+      await Future.delayed(forSeconds(20), subscription.pause);
+      await Future.delayed(forSeconds(90), subscription.resume);
+      await Future.delayed(forSeconds(190), subscription.cancel);
       elementStreamController.close();
       expect(
           outputList,
           completion(orderedEquals([
-            afterRoughlyMillis<Output>(100, 0),
-            afterRoughlyMillis<Output>(1100, 1),
-            afterRoughlyMillis<Output>(1400, 2),
-            afterRoughlyMillis<Output>(1800, 3),
+            afterRoughlyMillis(10, Lifecycle.start(0)),
+            afterRoughlyMillis(110, Lifecycle.start(1)),
+            afterRoughlyMillis(140, Lifecycle.start(2)),
+            afterRoughlyMillis(180, Lifecycle.stop(2)),
+            afterRoughlyMillis(230, Lifecycle.start(3)),
           ])));
     });
   });
