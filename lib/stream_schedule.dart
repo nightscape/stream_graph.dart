@@ -1,40 +1,26 @@
 import 'dart:async';
 
 import 'package:rxdart/rxdart.dart';
+import 'package:stream_graph/schedule.dart';
 
-class Schedule<T> {
-  final T elem;
-  final Duration duration;
-  final bool Function(T)? afterCondition;
-
-  Schedule(this.elem, this.duration, {this.afterCondition});
-
-  factory Schedule.emit(T elem, Duration duration, {T? after}) => after == null
-      ? Schedule(elem, duration)
-      : Schedule(elem, duration, afterCondition: (e) => e == after);
-
-  bool matches(T other) => afterCondition != null && afterCondition!(other);
-}
-
-class StreamSchedule<T> {
-  Stream<T> scheduleStream(List<Schedule<T>> schedule) {
-    if (schedule.isEmpty) {
-      return Stream.empty();
-    }
+extension AsyncExpandRecursive<T> on Stream<T> {
+  Stream<T> asyncMapRecursive(Iterable<Future<T>> Function(T) mapper) {
     StreamController<T> controller = StreamController();
-    void emit(Schedule<T> schedule) {
-      if (schedule.duration.inMicroseconds == 0) {
-        controller.add(schedule.elem);
-      } else {
-        Future.delayed(
-            schedule.duration, (() => controller.add(schedule.elem)));
-      }
-    }
+    void emit(Future<T> fut) =>
+        fut.then(controller.add).catchError(controller.addError);
 
-    final stream = controller.stream.doOnData(
-        (e) => schedule.where((element) => element.matches(e)).forEach(emit));
-    schedule.where((e) => e.afterCondition == null).forEach(emit);
+    final stream = controller.stream.doOnData((e) {
+      final mapped = mapper(e);
+      mapped.forEach(emit);
+    });
+    this.forEach(controller.add);
 
     return stream;
+  }
+
+  Stream<T> asyncMapMultipleRecursive(
+      Iterable<Iterable<Future<T>> Function(T)> mappers) {
+    final mapper = (T t) => mappers.expand((m) => m(t));
+    return asyncMapRecursive(mapper);
   }
 }

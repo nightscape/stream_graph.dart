@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:rxdart/rxdart.dart';
 import 'package:stream_graph/dot_visualization.dart';
+import 'package:stream_graph/schedule.dart';
 import 'package:stream_graph/stream_graph.dart';
 import 'package:stream_graph/stream_schedule.dart';
 import 'package:test/test.dart';
@@ -234,14 +235,20 @@ void main() {
   });
   test("Allows scheduling items in a stream", () async {
     final graph = new StreamGraph();
-    final startNode = graph.addScheduleNode<int>(name: "s1", schedule: [
-      Schedule(0, Duration(milliseconds: 100)),
-      Schedule.emit(1, Duration(milliseconds: 200), after: 0),
-      Schedule.emit(2, Duration(milliseconds: 300), after: 1)
+    final startNode = graph.addStartNode<int>(name: "s1");
+    final scheduleNode =
+        graph.addScheduleNode<int>(startNode, name: "s2", schedule: [
+      Schedule.emit<int>(1, Duration(milliseconds: 200), after: 0),
+      Schedule.emit<int>(2, Duration(milliseconds: 300), after: 1)
     ]);
-    final compiledGraph = graph.compile({});
-    final doubledStream =
-        compiledGraph.forNode(startNode)!.absoluteTimeInterval().toList();
+    final compiledGraph = graph
+        .compile({startNode: TimerStream<int>(0, Duration(milliseconds: 100))});
+    final doubledStream = compiledGraph
+        .forNode(scheduleNode)!
+        .absoluteTimeInterval()
+        .doOnData(print)
+        .take(3)
+        .toList();
     await Future.delayed(Duration(milliseconds: 700));
     compiledGraph.close();
     expect(

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:rxdart/rxdart.dart';
+import 'package:stream_graph/schedule.dart';
 import 'package:stream_graph/stream_schedule.dart';
 import 'package:test/test.dart';
 import 'dart:mirrors';
@@ -14,18 +15,18 @@ void main() {
       Duration(milliseconds: seconds * 1000 ~/ speedup);
   Duration forSeconds(int seconds) =>
       Duration(milliseconds: seconds * 1000 ~/ speedup);
+  Stream<int> startStream() => TimerStream(0, afterSeconds(100));
   final session = [
-    Schedule<int>.emit(0, afterSeconds(100)),
-    Schedule<int>.emit(1, afterSeconds(200), after: 0),
-    Schedule<int>.emit(2, afterSeconds(300), after: 1),
-    Schedule<int>.emit(3, afterSeconds(400), after: 2),
+    Schedule.emit<int>(1, afterSeconds(200), after: 0),
+    Schedule.emit<int>(2, afterSeconds(300), after: 1),
+    Schedule.emit<int>(3, afterSeconds(400), after: 2),
   ];
   group("StreamSchedule", () {
     test('Converts Schedules into a correctly timed Stream of elements',
         () async {
-      final interpreter = StreamSchedule<int>();
-      final outputStream =
-          interpreter.scheduleStream(session).absoluteTimeInterval();
+      final outputStream = startStream()
+          .asyncMapMultipleRecursive(session)
+          .absoluteTimeInterval();
       expect(
           outputStream,
           emitsRoughlyAfterSeconds([
@@ -38,10 +39,9 @@ void main() {
     test(
         'Converts Schedules into a correctly timed Stream of elements, even with breaks',
         () async {
-      final interpreter = StreamSchedule<int>();
       final elementStreamController = StreamController<Output>();
-      final subscription = interpreter
-          .scheduleStream(session)
+      final subscription = startStream()
+          .asyncMapMultipleRecursive(session)
           .listen((event) => elementStreamController.add(event));
       subscription.pause();
       final outputStream =
