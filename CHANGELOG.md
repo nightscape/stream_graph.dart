@@ -1,3 +1,7 @@
+0.2.3
+=====
+* Make duration parameter in Schedule optional and default to 0
+
 0.2.2
 =====
 * Interval#stopWhen can read other Streams from the CompiledStreamGraph
