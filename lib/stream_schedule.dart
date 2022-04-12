@@ -39,8 +39,8 @@ class Interval<T> extends Schedule<Lifecycle<T>> {
   Stream<Lifecycle<T>> call(
       StreamElement<Lifecycle<T>> value, Map<StreamNode, Stream> streams) {
     final endStream = stopWhen.key.call(streams);
-    return Schedule.emission<Lifecycle<T>>(duration,
-            after: after, emit: Lifecycle.start(emitElem))
+    return Schedule.emission<Lifecycle<T>>(
+            duration: duration, after: after, emit: Lifecycle.start(emitElem))
         .call(value)
         .asyncExpand((v) => Stream.value(v).concatWith([
               Stream.fromFuture(stopWhen
@@ -59,22 +59,29 @@ abstract class Schedule<T> {
 
   final bool Function(StreamElement<T>) after;
   const Schedule(this.duration, this.after);
-  static Emission<T> emission<T>(Duration duration,
-          {required StreamPredicate<T> after, required T emit}) =>
+  static Emission<T> emission<T>(
+          {Duration duration = const Duration(seconds: 0),
+          required StreamPredicate<T> after,
+          required T emit}) =>
       Emission(duration, after: after, emit: emit);
-  static Interval<T> interval<T>(Duration duration,
-          {required StreamPredicate<Lifecycle<T>> after,
+  static Interval<T> interval<T>(
+          {Duration duration = const Duration(seconds: 0),
+          required StreamPredicate<Lifecycle<T>> after,
           required T emit,
           required StreamCondition stopWhen}) =>
       Interval(duration, after: after, emit: emit, stopWhen: stopWhen);
-  static Emission<Lifecycle<T>> start<T>(Duration duration,
-          {required StreamPredicate<Lifecycle<T>> after, required T emit}) =>
-      Schedule.emission<Lifecycle<T>>(duration,
-          emit: Lifecycle.start(emit), after: after);
-  static Emission<Lifecycle<T>> stop<T>(Duration duration,
-          {required StreamPredicate<Lifecycle<T>> after, required T emit}) =>
-      Schedule.emission<Lifecycle<T>>(duration,
-          emit: Lifecycle.stop(emit), after: after);
+  static Emission<Lifecycle<T>> start<T>(
+          {Duration duration = const Duration(seconds: 0),
+          required StreamPredicate<Lifecycle<T>> after,
+          required T emit}) =>
+      Schedule.emission<Lifecycle<T>>(
+          duration: duration, emit: Lifecycle.start(emit), after: after);
+  static Emission<Lifecycle<T>> stop<T>(
+          {Duration duration = const Duration(seconds: 0),
+          required StreamPredicate<Lifecycle<T>> after,
+          required T emit}) =>
+      Schedule.emission<Lifecycle<T>>(
+          duration: duration, emit: Lifecycle.stop(emit), after: after);
 }
 
 @freezed

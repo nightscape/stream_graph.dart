@@ -235,14 +235,19 @@ void main() {
     final startNode = graph.addStartNode<Lifecycle<int>>(name: "s1");
     final scheduleNode =
         graph.addLifecycleScheduleNode<int>(startNode, name: "s2", schedule: [
-      Schedule.start(Duration(milliseconds: 200),
-          after: observingElement(Lifecycle.start(0)), emit: 1),
-      Schedule.interval(Duration(milliseconds: 300),
+      Schedule.start(
+          duration: Duration(milliseconds: 200),
+          after: observingElement(Lifecycle.start(0)),
+          emit: 1),
+      Schedule.interval(
+          duration: Duration(milliseconds: 300),
           after: observingElement(Lifecycle.start(1)),
           emit: 2,
           stopWhen: streamEmits("s1", Lifecycle.start(5))),
-      Schedule.start(Duration(milliseconds: 500),
-          after: observingElement(Lifecycle.stop(2)), emit: 3)
+      Schedule.start(
+          duration: Duration(milliseconds: 500),
+          after: observingElement(Lifecycle.stop(2)),
+          emit: 3)
     ]);
     final compiledGraph = graph.compile({
       startNode: TimerStream<Lifecycle<int>>(

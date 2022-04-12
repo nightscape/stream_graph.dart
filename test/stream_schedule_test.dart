@@ -11,15 +11,20 @@ void main() {
   Duration forSeconds(int seconds) =>
       Duration(milliseconds: seconds * 1000 ~/ speedup);
   final session = <Schedule<Lifecycle<int>>>[
-    Schedule.start(afterSeconds(10), after: streamStart(), emit: 0),
-    Schedule.start(afterSeconds(20),
-        after: observingElement(Lifecycle.start(0)), emit: 1),
-    Schedule.interval<int>(afterSeconds(30),
+    Schedule.start(duration: afterSeconds(10), after: streamStart(), emit: 0),
+    Schedule.start(
+        duration: afterSeconds(20),
+        after: observingElement(Lifecycle.start(0)),
+        emit: 1),
+    Schedule.interval<int>(
+        duration: afterSeconds(30),
         after: observingElement(Lifecycle.start(1)),
         emit: 2,
         stopWhen: timePassed(afterSeconds(40))),
-    Schedule.start(afterSeconds(50),
-        after: observingElement(Lifecycle.stop(2)), emit: 3),
+    Schedule.start(
+        duration: afterSeconds(50),
+        after: observingElement(Lifecycle.stop(2)),
+        emit: 3),
   ];
   group("StreamSchedule", () {
     test('Converts Schedules into a correctly timed Stream of elements',
