@@ -1,3 +1,7 @@
+0.2.1
+=====
+* Include generated freezed files
+
 0.2.0
 =====
 * Initial release
