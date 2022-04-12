@@ -1,16 +1,18 @@
 name: stream_graph
 description: A Dart library for constructing directed acyclic graphs of Streams building upon each other.
+repository: https://github.com/nightscape/stream_graph.dart
 version: 0.2.0
-publish_to: none
+
 environment:
   sdk: ">=2.15.0 <3.0.0"
 
 dependencies:
-  directed_graph:
-  rxdart:
-  freezed:
+  directed_graph: ^0.3.7
+  rxdart: ^0.27.3
+  freezed_annotation: ^1.1.0
 
 
 dev_dependencies:
   test: ^1.20.1
-  build_runner:
+  build_runner: ^2.1.8
+  freezed: ^1.1.1
