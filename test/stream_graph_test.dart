@@ -156,7 +156,6 @@ void main() {
       doubledTripledNode,
       tripledNode2
     ], Rx.merge<int>, name: "merge");
-    File("delete_me.dot").writeAsString(graph.graph.toDotString());
     final compiledGraph =
         graph.compile({startNode1: source1, startNode2: source2});
     final mergedStream =
@@ -210,7 +209,6 @@ void main() {
         (s1, s2) => Rx.combineLatest2<int, String, String>(
             s1, s2, (e1, e2) => "${e1}${e2}"),
         name: "merge");
-    File("delete_me.dot").writeAsString(graph.graph.toDotString());
     final compiledGraph =
         graph.compile({startNode1: source1, startNode2: source2});
     final mergedStream =
