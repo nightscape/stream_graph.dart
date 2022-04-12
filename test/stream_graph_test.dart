@@ -232,30 +232,41 @@ void main() {
   });
   test("Allows scheduling items in a stream", () async {
     final graph = new StreamGraph();
-    final startNode = graph.addStartNode<int>(name: "s1");
+    final startNode = graph.addStartNode<Lifecycle<int>>(name: "s1");
     final scheduleNode =
-        graph.addScheduleNode<int>(startNode, name: "s2", schedule: [
-      Schedule.emission(Duration(milliseconds: 200),
-          after: observingElement(0), emit: 1),
-      Schedule.emission(Duration(milliseconds: 300),
-          after: observingElement(1), emit: 2)
+        graph.addLifecycleScheduleNode<int>(startNode, name: "s2", schedule: [
+      Schedule.start(Duration(milliseconds: 200),
+          after: observingElement(Lifecycle.start(0)), emit: 1),
+      Schedule.interval(Duration(milliseconds: 300),
+          after: observingElement(Lifecycle.start(1)),
+          emit: 2,
+          stopWhen: streamEmits("s1", Lifecycle.start(5))),
+      Schedule.start(Duration(milliseconds: 500),
+          after: observingElement(Lifecycle.stop(2)), emit: 3)
     ]);
-    final compiledGraph = graph
-        .compile({startNode: TimerStream<int>(0, Duration(milliseconds: 100))});
+    final compiledGraph = graph.compile({
+      startNode: TimerStream<Lifecycle<int>>(
+              Lifecycle.start(0), Duration(milliseconds: 100))
+          .concatWith(
+              [TimerStream(Lifecycle.start(5), Duration(milliseconds: 700))])
+    });
     final doubledStream = compiledGraph
         .forNode(scheduleNode)!
         .absoluteTimeInterval()
         .doOnData(print)
-        .take(3)
+        .take(6)
         .toList();
-    await Future.delayed(Duration(milliseconds: 700));
+    await Future.delayed(Duration(milliseconds: 2000));
     compiledGraph.close();
     expect(
         doubledStream,
         completion(containsAllInOrder([
-          afterRoughlyMillis<int>(100, 0),
-          afterRoughlyMillis<int>(300, 1),
-          afterRoughlyMillis<int>(600, 2),
+          afterRoughlyMillis<Lifecycle<int>>(100, Lifecycle.start(0)),
+          afterRoughlyMillis<Lifecycle<int>>(300, Lifecycle.start(1)),
+          afterRoughlyMillis<Lifecycle<int>>(600, Lifecycle.start(2)),
+          afterRoughlyMillis<Lifecycle<int>>(800, Lifecycle.start(5)),
+          afterRoughlyMillis<Lifecycle<int>>(800, Lifecycle.stop(2)),
+          afterRoughlyMillis<Lifecycle<int>>(1300, Lifecycle.start(3)),
         ])));
   });
   test("Allows transforming generated Streams", () async {

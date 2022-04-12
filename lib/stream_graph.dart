@@ -44,6 +44,28 @@ class TransformNode<S, T> extends StreamNode<T> {
       mapping.bind(existingStreams[input]! as Stream<S>);
 }
 
+class ScheduleNode<T> extends StreamNode<T> {
+  final Iterable<Schedule<T>> schedule;
+  final StreamNode<T> input;
+  ScheduleNode(this.input, this.schedule, {String? name}) : super(name: name);
+
+  Stream<T> transformStreams(Map<StreamNode, Stream> existingStreams) =>
+      schedule.stream(existingStreams[input]! as Stream<T>);
+}
+
+class LifecycleScheduleNode<T> extends StreamNode<Lifecycle<T>> {
+  final Iterable<Schedule<Lifecycle<T>>> schedule;
+  final StreamNode<Lifecycle<T>> input;
+  LifecycleScheduleNode(this.input, this.schedule, {String? name})
+      : super(name: name);
+
+  Stream<Lifecycle<T>> transformStreams(
+          Map<StreamNode, Stream> existingStreams) =>
+      schedule.lifecycleStream(
+          streams: existingStreams,
+          startStream: existingStreams[input]! as Stream<Lifecycle<T>>);
+}
+
 class FilterNode<T> extends StreamNode<T> {
   final StreamNode<T> input;
   final bool Function(T) predicate;
@@ -157,19 +179,15 @@ class StreamGraph {
   SourceNode<T> addStartNode<T>({String? name, bool pauseable = false}) =>
       addNode(SourceNode<T>(pauseable: pauseable, name: name), name);
 
-  TransformNode<T, T> addScheduleNode<T>(StreamNode<T> input,
+  ScheduleNode<T> addScheduleNode<T>(StreamNode<T> input,
           {String? name, required Iterable<Schedule<T>> schedule}) =>
-      addTransformer(
-          input, StreamTransformer.fromBind((s) => schedule.stream(s)),
-          name: name);
+      addNode(ScheduleNode<T>(input, schedule, name: name), name);
 
-  TransformNode<Lifecycle<T>, Lifecycle<T>> addLifecycleScheduleNode<T>(
+  LifecycleScheduleNode<T> addLifecycleScheduleNode<T>(
           StreamNode<Lifecycle<T>> input,
           {String? name,
           required Iterable<Schedule<Lifecycle<T>>> schedule}) =>
-      addTransformer(
-          input, StreamTransformer.fromBind((s) => schedule.lifecycleStream(s)),
-          name: name);
+      addNode(LifecycleScheduleNode<T>(input, schedule, name: name), name);
 
   TransformNode<S, T> addTransformer<S, T>(
       StreamNode<S> input, StreamTransformer<S, T> streamTransformer,
@@ -299,6 +317,10 @@ class CompiledStreamGraph {
       if (node is SourceNode) {
         newStream = startStreams[node]!.key.stream;
       } else if (node is TransformNode) {
+        newStream = node.transformStreams(streams);
+      } else if (node is ScheduleNode) {
+        newStream = node.transformStreams(streams);
+      } else if (node is LifecycleScheduleNode) {
         newStream = node.transformStreams(streams);
       } else if (node is FilterNode) {
         newStream = node.transformStreams(streams);

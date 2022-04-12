@@ -2,10 +2,13 @@ import 'dart:async';
 
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:rxdart/rxdart.dart';
+import 'package:stream_graph/stream_graph.dart';
 
 part 'stream_schedule.freezed.dart';
 
 typedef StreamPredicate<T> = bool Function(StreamElement<T>);
+typedef StreamCondition = MapEntry<Stream? Function(Map<StreamNode, Stream>),
+    Future<dynamic> Function(Stream?)>;
 
 class StreamElement<T> {
   final T? elem;
@@ -27,20 +30,24 @@ class Emission<T> extends Schedule<T> {
 class Interval<T> extends Schedule<Lifecycle<T>> {
   final T emitElem;
   final bool Function(StreamElement<Lifecycle<T>>) after;
-  final Future<dynamic> Function() endWhen;
+  final StreamCondition stopWhen;
 
   Interval(Duration duration,
-      {required this.after, required this.endWhen, required T emit})
+      {required this.after, required this.stopWhen, required T emit})
       : emitElem = emit,
         super(duration, after);
-  Stream<Lifecycle<T>> call(StreamElement<Lifecycle<T>> value) =>
-      Schedule.emission<Lifecycle<T>>(duration,
-              after: after, emit: Lifecycle.start(emitElem))
-          .call(value)
-          .asyncExpand((v) => Stream.value(v).concatWith([
-                Stream.fromFuture(
-                    endWhen().then((_) => Lifecycle.stop(emitElem)))
-              ]));
+  Stream<Lifecycle<T>> call(
+      StreamElement<Lifecycle<T>> value, Map<StreamNode, Stream> streams) {
+    final endStream = stopWhen.key.call(streams);
+    return Schedule.emission<Lifecycle<T>>(duration,
+            after: after, emit: Lifecycle.start(emitElem))
+        .call(value)
+        .asyncExpand((v) => Stream.value(v).concatWith([
+              Stream.fromFuture(stopWhen
+                  .value(endStream)
+                  .then((_) => Lifecycle.stop(emitElem)))
+            ]));
+  }
 
   @override
   Lifecycle<T> get emit => Lifecycle.start(emitElem);
@@ -58,8 +65,8 @@ abstract class Schedule<T> {
   static Interval<T> interval<T>(Duration duration,
           {required StreamPredicate<Lifecycle<T>> after,
           required T emit,
-          required Future<dynamic> Function() endWhen}) =>
-      Interval(duration, after: after, emit: emit, endWhen: endWhen);
+          required StreamCondition stopWhen}) =>
+      Interval(duration, after: after, emit: emit, stopWhen: stopWhen);
   static Emission<Lifecycle<T>> start<T>(Duration duration,
           {required StreamPredicate<Lifecycle<T>> after, required T emit}) =>
       Schedule.emission<Lifecycle<T>>(duration,
@@ -86,13 +93,17 @@ extension ScheduleListExtension<T> on Iterable<Schedule<T>> {
 
 extension LifecycleScheduleListExtension<T>
     on Iterable<Schedule<Lifecycle<T>>> {
-  Stream<Lifecycle<T>> lifecycleStream([Stream<Lifecycle<T>>? startStr]) {
-    final startStream = startStr ?? Stream<Lifecycle<T>>.empty();
+  Stream<Lifecycle<T>> lifecycleStream(
+      {Map<StreamNode, Stream> streams = const {},
+      Stream<Lifecycle<T>>? startStream}) {
+    final startStr = startStream ?? Stream<Lifecycle<T>>.empty();
     final emissionFunctions =
         this.whereType<Emission<Lifecycle<T>>>().map((e) => e.call);
-    final intervalFunctions = this.whereType<Interval<T>>().map((e) => e.call);
+    final intervalFunctions = this
+        .whereType<Interval<T>>()
+        .map((e) => (StreamElement<Lifecycle<T>> t) => e.call(t, streams));
 
-    return startStream.asyncExpandMultipleRecursive(
+    return startStr.asyncExpandMultipleRecursive(
         emissionFunctions.followedBy(intervalFunctions));
   }
 }
@@ -100,6 +111,15 @@ extension LifecycleScheduleListExtension<T>
 StreamPredicate<T> observingElement<T>(T e) => (StreamElement o) => e == o.elem;
 StreamPredicate<T> streamStart<T>() =>
     (StreamElement o) => o.index == 0 && o.elem == null;
+
+StreamCondition streamEmits(String streamName, dynamic value) => MapEntry(
+    (streams) => streams.entries
+        .firstWhere((element) => element.key.name == streamName)
+        .value,
+    (stream) => stream!.firstWhere((element) => element == value));
+
+StreamCondition timePassed(Duration duration) =>
+    MapEntry((_) => null, (_) => Future.delayed(duration));
 
 extension AsyncExpandRecursive<T> on Stream<T> {
   Stream<T> asyncExpandRecursive(Stream<T> Function(StreamElement<T>) mapper) {

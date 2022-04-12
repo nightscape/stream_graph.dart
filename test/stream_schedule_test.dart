@@ -17,7 +17,7 @@ void main() {
     Schedule.interval<int>(afterSeconds(30),
         after: observingElement(Lifecycle.start(1)),
         emit: 2,
-        endWhen: () => Future.delayed(afterSeconds(40))),
+        stopWhen: timePassed(afterSeconds(40))),
     Schedule.start(afterSeconds(50),
         after: observingElement(Lifecycle.stop(2)), emit: 3),
   ];
