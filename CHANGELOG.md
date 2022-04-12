@@ -1,3 +1,7 @@
+0.2.2
+=====
+* Interval#stopWhen can read other Streams from the CompiledStreamGraph
+
 0.2.1
 =====
 * Include generated freezed files
