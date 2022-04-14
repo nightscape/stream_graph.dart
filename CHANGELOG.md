@@ -1,3 +1,7 @@
+0.2.4
+=====
+* Add CopyNode to lazily copy a Stream
+
 0.2.3
 =====
 * Make duration parameter in Schedule optional and default to 0
