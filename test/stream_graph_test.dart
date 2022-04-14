@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:rxdart/rxdart.dart';
 import 'package:stream_graph/dot_visualization.dart';
@@ -273,6 +274,25 @@ void main() {
           afterRoughlyMillis<Lifecycle<int>>(800, Lifecycle.stop(2)),
           afterRoughlyMillis<Lifecycle<int>>(1300, Lifecycle.start(3)),
         ])));
+  });
+  test("Allows creating cycles using CopyNodes", () {
+    final graph = new StreamGraph();
+    final copyNode = graph.addCopyNode<int>(nodeName: "merge");
+    final copyTransformedNode = graph.addTransformer<int, int>(
+        copyNode,
+        StreamTransformer.fromBind((s) => Stream.fromFuture(
+            s.firstWhere((e) => e == 2).then((e) => e * 10))));
+    final startNode = graph.addStartNode<int>(pauseable: true, name: "source");
+    final merged = graph.combineAll<int, int>(<StreamNode<int>>[
+      startNode,
+      copyTransformedNode,
+    ], Rx.merge<int>, name: "merge");
+
+    final compiledGraph = graph.compile({
+      startNode: Stream<int>.fromIterable([1, 2, 3])
+    });
+    final mergedStream = compiledGraph.forNode(merged);
+    expect(mergedStream, emitsInOrder([1, 2, 20, 3]));
   });
   test("Allows transforming generated Streams", () async {
     var graph = new StreamGraph();

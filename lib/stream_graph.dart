@@ -35,6 +35,22 @@ class SourceNode<T> extends StreamNode<T> {
       MapEntry(controller, source.listen(controller.add));
 }
 
+class CopyNode<T> extends StreamNode<T> {
+  CopyNode({String? name}) : super(name: "copy-$name");
+  final controller = StreamController<T>.broadcast();
+  Stream<T> get stream => controller.stream;
+
+  MapEntry<StreamController<T>, StreamSubscription<T>> attach(
+      Map<StreamNode, Stream> existingStreams) {
+    final searchedName = name?.replaceFirst(RegExp(r"copy-"), "");
+    final copiedNodeAndStream = existingStreams.entries
+        .firstWhere((element) => element.key.name == searchedName);
+    final copiedStream = copiedNodeAndStream.value as Stream<T>;
+    return MapEntry(
+        controller, copiedStream.listen((event) => controller.add(event)));
+  }
+}
+
 class TransformNode<S, T> extends StreamNode<T> {
   final StreamTransformer<S, T> mapping;
   final StreamNode<S> input;
@@ -290,10 +306,13 @@ class StreamGraph {
     });
     return GroupMapping<T, K, V>(node, grouper, mapNodes, mapper);
   }
+
+  CopyNode<T> addCopyNode<T>({required String nodeName}) =>
+      addNode(CopyNode<T>(name: nodeName), nodeName);
 }
 
 class CompiledStreamGraph {
-  late final Map<SourceNode, MapEntry<StreamController, StreamSubscription>>
+  late final Map<StreamNode, MapEntry<StreamController, StreamSubscription>>
       startStreams;
   final DirectedGraph<GraphNode> graph;
   final Map<StreamNode, Stream> streams = {};
@@ -308,7 +327,8 @@ class CompiledStreamGraph {
       {this.transformStream, this.doOnData}) {
     nodesByName = {for (var e in nodeNames.entries) e.value: e.key};
     startStreams =
-        binding.map((key, stream) => MapEntry(key, key.attach(stream)));
+        binding.map<StreamNode, MapEntry<StreamController, StreamSubscription>>(
+            (key, stream) => MapEntry(key, key.attach(stream)));
     startStreams.forEach((key, value) {
       _addStreamForNode(value.key.stream, key);
     });
@@ -328,6 +348,8 @@ class CompiledStreamGraph {
         newStream = node.transformStreams(streams);
       } else if (node is Combine2Node) {
         newStream = node.transformStreams(streams);
+      } else if (node is CopyNode) {
+        newStream = node.stream;
       } else if (node is ConversionNode) {
       } else {
         throw UnimplementedError('$node');
@@ -335,8 +357,20 @@ class CompiledStreamGraph {
       if (newStream != null) {
         _addStreamForNode(newStream, node);
       }
-      //});
     });
+
+    final mappings = graph
+        .whereType<CopyNode>()
+        .map((node) => MapEntry<StreamNode,
+                MapEntry<StreamController, StreamSubscription>>(
+            node, node.attach(streams)))
+        .toList(growable: false);
+    final copyStreams = Map<StreamNode,
+        MapEntry<StreamController, StreamSubscription>>.fromEntries(mappings);
+    copyStreams.forEach((key, value) {
+      _addStreamForNode(value.key.stream, key);
+    });
+    startStreams.addAll(copyStreams);
   }
   void _addStreamForNode<T>(Stream<T> stream, StreamNode<T> node) {
     Stream<T> transformedStream =
