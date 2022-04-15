@@ -14,7 +14,11 @@ abstract class GraphNode extends Comparable<dynamic> {
   String toString() => (name ?? super.toString()) + ":\n$outputType";
 }
 
-abstract class StreamNode<T> extends GraphNode {
+abstract class HasInputStreamNodes {
+  List<StreamNode> get inputs;
+}
+
+abstract class StreamNode<T> extends GraphNode with HasInputStreamNodes {
   StreamNode({String? name}) : super(name: name);
   StreamTransformer<T, T> streamTransformer(
           StreamTransformer<T, T> Function(StreamNode<T>) transformer) =>
@@ -22,6 +26,52 @@ abstract class StreamNode<T> extends GraphNode {
   Stream<T> withDoOnData(
           Stream<T> input, void Function(dynamic, StreamNode<T>) onData) =>
       input.doOnData((event) => onData(event, this));
+  TransformNode<T, U> transform<U>(StreamTransformer<T, U> transformer,
+          {String? name}) =>
+      TransformNode<T, U>(this, transformer, name: name);
+  TransformNode<T, U> map<U>(U Function(T) mapper, {String? name}) =>
+      transform(StreamTransformer.fromBind((stream) => stream.map(mapper)),
+          name: name);
+  FilterNode<T> where(bool Function(T) predicate, {String? name}) =>
+      FilterNode(this, predicate, name: name);
+
+  Partitioning<T> partition(bool Function(T x) predicate,
+      {String? nameForMatches, String? nameForNonMatches}) {
+    final matchesNode = this.where(predicate, name: nameForMatches);
+    final nonMatchesNode =
+        this.where((T e) => !predicate(e), name: nameForNonMatches);
+    return Partitioning(matches: matchesNode, nonMatches: nonMatchesNode);
+  }
+
+  Grouping<T, K> groupBy<T, K>(StreamNode<T> node, K Function(T) grouper,
+      {required List<K> possibleGroups, String? name}) {
+    final groupNodes = {
+      for (var key in possibleGroups)
+        key: FilterNode<T>(node, (T e) => grouper(e) == key, name: '$name-$key')
+    };
+    return Grouping<T, K>(node, grouper, groupNodes);
+  }
+
+  GroupMapping<T, K, V> groupMapBy<K, V>(
+      {required K Function(T) grouper,
+      required V Function(T) mapper,
+      required List<K> possibleGroups,
+      String? name}) {
+    final groupNodes = {
+      for (var key in possibleGroups)
+        key: this.where((T e) => grouper(e) == key, name: '$name-$key')
+    };
+    final mapNodes = {
+      for (var key in possibleGroups)
+        key:
+            groupNodes[key]!.map((T e) => mapper(e), name: '$name-$key-mapping')
+    };
+    return GroupMapping<T, K, V>(this, grouper, mapNodes, mapper);
+  }
+
+  ConversionNode<T, U> convert<U>(U Function(Stream<T>) converter,
+          {String? name}) =>
+      ConversionNode<T, U>(this, converter, name: name);
 }
 
 class SourceNode<T> extends StreamNode<T> {
@@ -35,6 +85,9 @@ class SourceNode<T> extends StreamNode<T> {
           Map<StreamNode, Stream> existingStreams) =>
       MapEntry(controller,
           (existingStreams[this]! as Stream<T>).listen(controller.add));
+
+  @override
+  List<StreamNode> get inputs => [];
 }
 
 class EagerSourceNode<T> extends SourceNode<T> {
@@ -60,31 +113,45 @@ class CopyNode<T> extends StreamNode<T> {
     return MapEntry(
         controller, copiedStream.listen((event) => controller.add(event)));
   }
+
+  @override
+  List<StreamNode> get inputs => [];
 }
 
-class TransformNode<S, T> extends StreamNode<T> {
-  final StreamTransformer<S, T> mapping;
+class SingleInputNode<S, T> extends StreamNode<T> {
   final StreamNode<S> input;
-  TransformNode(this.input, this.mapping, {String? name}) : super(name: name);
+  SingleInputNode(this.input, {String? name}) : super(name: name);
+
+  @override
+  List<StreamNode> get inputs => [input];
+}
+
+class TransformNode<S, T> extends SingleInputNode<S, T> {
+  final StreamTransformer<S, T> mapping;
+  TransformNode(StreamNode<S> input, this.mapping, {String? name})
+      : super(input, name: name);
 
   Stream<T> transformStreams(Map<StreamNode, Stream> existingStreams) =>
       mapping.bind(existingStreams[input]! as Stream<S>);
 }
 
-class ScheduleNode<T> extends StreamNode<T> {
+class ScheduleNode<T> extends SingleInputNode<T, T> {
   final Iterable<Schedule<T>> schedule;
-  final StreamNode<T> input;
-  ScheduleNode(this.input, this.schedule, {String? name}) : super(name: name);
+
+  ScheduleNode(StreamNode<T> input, this.schedule, {String? name})
+      : super(input, name: name);
 
   Stream<T> transformStreams(Map<StreamNode, Stream> existingStreams) =>
       schedule.stream(existingStreams[input]! as Stream<T>);
 }
 
-class LifecycleScheduleNode<T> extends StreamNode<Lifecycle<T>> {
+class LifecycleScheduleNode<T>
+    extends SingleInputNode<Lifecycle<T>, Lifecycle<T>> {
   final Iterable<Schedule<Lifecycle<T>>> schedule;
-  final StreamNode<Lifecycle<T>> input;
-  LifecycleScheduleNode(this.input, this.schedule, {String? name})
-      : super(name: name);
+
+  LifecycleScheduleNode(StreamNode<Lifecycle<T>> input, this.schedule,
+      {String? name})
+      : super(input, name: name);
 
   Stream<Lifecycle<T>> transformStreams(
           Map<StreamNode, Stream> existingStreams) =>
@@ -93,10 +160,10 @@ class LifecycleScheduleNode<T> extends StreamNode<Lifecycle<T>> {
           startStream: existingStreams[input]! as Stream<Lifecycle<T>>);
 }
 
-class FilterNode<T> extends StreamNode<T> {
-  final StreamNode<T> input;
+class FilterNode<T> extends SingleInputNode<T, T> {
   final bool Function(T) predicate;
-  FilterNode(this.input, this.predicate, {String? name}) : super(name: name);
+  FilterNode(StreamNode<T> input, this.predicate, {String? name})
+      : super(input, name: name);
   Stream<T> transformStreams(Map<StreamNode, Stream> existingStreams) =>
       (existingStreams[input]! as Stream<T>).where(predicate);
 }
@@ -107,23 +174,32 @@ class Partitioning<T> extends StreamNode<T> {
 
   Partitioning({required this.matches, required this.nonMatches, String? name})
       : super(name: name);
+
+  @override
+  List<StreamNode> get inputs => [matches, nonMatches];
 }
 
-class Grouping<T, K> {
+class Grouping<T, K> extends GraphNode with HasInputStreamNodes {
   StreamNode<T> node;
   K Function(T) grouper;
   Map<K, FilterNode<T>> groupNodes;
   Grouping(this.node, this.grouper, this.groupNodes);
   FilterNode<T> groupNode(K key) => groupNodes[key]!;
+
+  @override
+  List<StreamNode> get inputs => [node];
 }
 
-class GroupMapping<T, K, V> {
+class GroupMapping<T, K, V> extends GraphNode with HasInputStreamNodes {
   StreamNode<T> node;
   K Function(T) grouper;
-  Map<K, StreamNode<V>> groupNodes;
+  Map<K, TransformNode<T, V>> groupNodes;
   V Function(T) mapper;
   GroupMapping(this.node, this.grouper, this.groupNodes, this.mapper);
-  StreamNode<V> mapNode(K key) => groupNodes[key]!;
+  TransformNode<T, V> mapNode(K key) => groupNodes[key]!;
+
+  @override
+  List<StreamNode> get inputs => [node];
 }
 
 class Combine2Node<R, S, T> extends StreamNode<T> {
@@ -134,23 +210,31 @@ class Combine2Node<R, S, T> extends StreamNode<T> {
       : super(name: name);
   Stream<T> transformStreams(Map<StreamNode, Stream> inputs) => combinator(
       inputs[this.stream1]!.cast<R>(), inputs[this.stream2]!.cast<S>());
+
+  @override
+  List<StreamNode> get inputs => [stream1, stream2];
 }
 
 class CombineAllNode<S, T> extends StreamNode<T> {
   final List<StreamNode<S>> Function(StreamGraph) selector;
   final Stream<T> Function(List<Stream<S>>) combinator;
-  List<StreamNode<S>>? inputs;
+  List<StreamNode<S>>? _inputs;
   CombineAllNode(this.selector, this.combinator, {String? name})
       : super(name: name);
   void finalize(StreamGraph graph) {
-    inputs = selector(graph);
-    for (final node in inputs!) {
+    _inputs = selector(graph);
+    for (final node in _inputs!) {
       graph.graph.addEdges(node, {this});
     }
   }
 
-  Stream<T> transformStreams(Map<StreamNode, Stream> inputs) => combinator(
-      this.inputs!.map((i) => inputs[i]! as Stream<S>).toList(growable: false));
+  Stream<T> transformStreams(Map<StreamNode, Stream> inputs) => combinator(this
+      ._inputs!
+      .map((i) => inputs[i]! as Stream<S>)
+      .toList(growable: false));
+
+  @override
+  List<StreamNode> get inputs => _inputs ?? [];
 }
 
 List<StreamNode<S>> Function(StreamGraph) fromList<S>(
@@ -162,11 +246,11 @@ List<StreamNode<S>> Function(StreamGraph) byName<S>(RegExp regExp) =>
         .cast<StreamNode<S>>()
         .toList(growable: false);
 
-class ConversionNode<S, T> extends GraphNode {
-  final StreamNode<S> input;
+class ConversionNode<S, T> extends SingleInputNode<S, T> {
   final T Function(Stream<S>) converter;
   final String? name;
-  ConversionNode(this.input, this.converter, {this.name});
+  ConversionNode(StreamNode<S> input, this.converter, {this.name})
+      : super(input, name: name);
   T transformStream(Stream<S> input) => converter(input);
   @override
   String toString() => name ?? super.toString();
@@ -175,12 +259,34 @@ class ConversionNode<S, T> extends GraphNode {
 class StreamGraph {
   final graph = DirectedGraph<GraphNode>({});
   final nodeNames = <GraphNode, String>{};
-  StreamGraph() {
+  StreamGraph([Iterable<GraphNode> nodes = const []]) {
     graph.comparator = null;
+    nodes.forEach(addNode);
   }
 
+  static SourceNode<T> sourceNode<T>({String? name, bool pauseable = false}) =>
+      SourceNode<T>(pauseable: pauseable, name: name);
+
+  static SourceNode<T> eagerSourceNode<T>(Stream<T> stream,
+          {String? name, bool pauseable = false}) =>
+      EagerSourceNode<T>(stream, pauseable: pauseable, name: name);
+
+  static CopyNode<T> copyNode<T>({required String nodeName}) =>
+      CopyNode<T>(name: nodeName);
+
+  static CombineAllNode<S, T> combineAllNode<S, T>(List<StreamNode<S>> list,
+          Stream<T> Function(List<Stream<S>>) combinator,
+          {String? name}) =>
+      combineAllFromSelectorNode(fromList(list), combinator, name: name);
+
+  static CombineAllNode<S, T> combineAllFromSelectorNode<S, T>(
+          List<StreamNode<S>> Function(StreamGraph) selector,
+          Stream<T> Function(List<Stream<S>>) combinator,
+          {String? name}) =>
+      CombineAllNode<S, T>(selector, combinator, name: name);
+
   void finalize() {
-    for (final node in graph.vertices) {
+    for (final node in graph.vertices.toList(growable: false)) {
       if (node is CombineAllNode) {
         node.finalize(this);
       }
@@ -195,109 +301,84 @@ class StreamGraph {
         transformStream: transformStream, doOnData: doOnData);
   }
 
-  T addNode<T extends GraphNode>(T node, String? name) {
-    if (name != null) {
-      nodeNames[node] = name;
+  T addNode<T extends GraphNode>(T node) {
+    if (node.name != null) {
+      nodeNames[node] = node.name!;
     }
+    final edgeNodes = (node is HasInputStreamNodes)
+        ? (node as HasInputStreamNodes).inputs
+        : <StreamNode>[];
     graph.addEdges(node, {});
+    edgeNodes.forEach((inputNode) {
+      graph.addEdges(inputNode, {node});
+      addNode(inputNode);
+    });
     return node;
   }
 
   SourceNode<T> addSourceNode<T>({String? name, bool pauseable = false}) =>
-      addNode(SourceNode<T>(pauseable: pauseable, name: name), name);
+      addNode(SourceNode<T>(pauseable: pauseable, name: name));
 
   SourceNode<T> addEagerSourceNode<T>(Stream<T> stream,
           {String? name, bool pauseable = false}) =>
-      addNode(
-          EagerSourceNode<T>(stream, pauseable: pauseable, name: name), name);
+      addNode(EagerSourceNode<T>(stream, pauseable: pauseable, name: name));
 
   ScheduleNode<T> addScheduleNode<T>(StreamNode<T> input,
           {String? name, required Iterable<Schedule<T>> schedule}) =>
-      addNode(ScheduleNode<T>(input, schedule, name: name), name);
+      addNode(ScheduleNode<T>(input, schedule, name: name));
 
   LifecycleScheduleNode<T> addLifecycleScheduleNode<T>(
           StreamNode<Lifecycle<T>> input,
           {String? name,
           required Iterable<Schedule<Lifecycle<T>>> schedule}) =>
-      addNode(LifecycleScheduleNode<T>(input, schedule, name: name), name);
+      addNode(LifecycleScheduleNode<T>(input, schedule, name: name));
 
   TransformNode<S, T> addTransformer<S, T>(
-      StreamNode<S> input, StreamTransformer<S, T> streamTransformer,
-      {String? name}) {
-    final node = TransformNode<S, T>(input, streamTransformer, name: name);
-    addNode(node, name);
-    graph.addEdges(input, {node});
-    return node;
-  }
-
-  StreamNode<T> addMapping<S, T>(StreamNode<S> input, T Function(S) mapping,
+          StreamNode<S> input, StreamTransformer<S, T> streamTransformer,
           {String? name}) =>
-      addTransformer<S, T>(
-          input,
-          StreamTransformer<S, T>.fromBind(
-              (Stream<S> input) => input.map(mapping)),
-          name: name);
+      addNode(input.transform(streamTransformer, name: name));
+
+  TransformNode<S, T> addMapping<S, T>(
+          StreamNode<S> input, T Function(S) mapping,
+          {String? name}) =>
+      addNode(input.map(mapping, name: name));
 
   Partitioning<T> addPartitioning<T>(
       StreamNode<T> input, bool Function(T x) predicate,
       {String? nameForMatches, String? nameForNonMatches}) {
-    final matchesNode = FilterNode<T>(input, predicate, name: nameForMatches);
-    final nonMatchesNode =
-        FilterNode<T>(input, (T e) => !predicate(e), name: nameForNonMatches);
-    addNode(matchesNode, nameForMatches);
-    addNode(nonMatchesNode, nameForNonMatches);
-    graph.addEdges(input, {matchesNode});
-    graph.addEdges(input, {nonMatchesNode});
-    return Partitioning(matches: matchesNode, nonMatches: nonMatchesNode);
+    return addNode(input.partition(predicate,
+        nameForMatches: nameForMatches, nameForNonMatches: nameForNonMatches));
   }
 
   Combine2Node<R, S, T> combine2<R, S, T>(
-      StreamNode<R> stream1,
-      StreamNode<S> stream2,
-      Stream<T> Function(Stream<R>, Stream<S>) combinator,
-      {String? name}) {
-    final mergeNode =
-        Combine2Node<R, S, T>(stream1, stream2, combinator, name: name);
-    addNode(mergeNode, name);
-    for (final node in [stream1, stream2]) {
-      graph.addEdges(node, {mergeNode});
-    }
-    return mergeNode;
-  }
+          StreamNode<R> stream1,
+          StreamNode<S> stream2,
+          Stream<T> Function(Stream<R>, Stream<S>) combinator,
+          {String? name}) =>
+      addNode(Combine2Node<R, S, T>(stream1, stream2, combinator, name: name));
 
-  CombineAllNode<S, T> combineAll<S, T>(List<StreamNode<S>> list,
+  CombineAllNode<S, T> addCombineAll<S, T>(List<StreamNode<S>> list,
           Stream<T> Function(List<Stream<S>>) combinator,
           {String? name}) =>
-      combineAllFromSelector(fromList(list), combinator, name: name);
+      addNode(combineAllNode(list, combinator, name: name));
 
-  CombineAllNode<S, T> combineAllFromSelector<S, T>(
-      List<StreamNode<S>> Function(StreamGraph) selector,
-      Stream<T> Function(List<Stream<S>>) combinator,
-      {String? name}) {
-    final comb = CombineAllNode<S, T>(selector, combinator, name: name);
-    addNode(comb, name);
-    return comb;
-  }
+  CombineAllNode<S, T> addCombineAllFromSelector<S, T>(
+          List<StreamNode<S>> Function(StreamGraph) selector,
+          Stream<T> Function(List<Stream<S>>) combinator,
+          {String? name}) =>
+      addNode(combineAllFromSelectorNode(selector, combinator, name: name));
 
   ConversionNode<S, T> convert<S, T>(
-      StreamNode<S> node, T Function(Stream<S>) converter,
-      {String? name}) {
-    final n = ConversionNode<S, T>(node, converter, name: name);
-    addNode(n, name);
-    graph.addEdges(node, {n});
-    return n;
-  }
+          StreamNode<S> node, T Function(Stream<S>) converter,
+          {String? name}) =>
+      addNode(ConversionNode<S, T>(node, converter, name: name));
 
   Grouping<T, K> addGrouping<T, K>(StreamNode<T> node, K Function(T) grouper,
       {required List<K> possibleGroups, String? name}) {
-    final groupNodes = {
-      for (var key in possibleGroups)
-        key: FilterNode<T>(node, (T e) => grouper(e) == key, name: '$name-$key')
-    };
-    groupNodes.values
-        .forEach((groupNode) => addNode(groupNode, groupNode.name));
-    graph.addEdges(node, groupNodes.values.toSet());
-    return Grouping<T, K>(node, grouper, groupNodes);
+    final groupNode =
+        node.groupBy(node, grouper, possibleGroups: possibleGroups);
+    groupNode.groupNodes.values.forEach(addNode);
+    return addNode(groupNode);
   }
 
   GroupMapping<T, K, V> addGroupMapping<T, K, V>(StreamNode<T> node,
@@ -305,26 +386,17 @@ class StreamGraph {
       required V Function(T) mapper,
       required List<K> possibleGroups,
       String? name}) {
-    final groupNodes = {
-      for (var key in possibleGroups)
-        key: FilterNode<T>(node, (T e) => grouper(e) == key, name: '$name-$key')
-    };
-    groupNodes.values
-        .forEach((groupNode) => addNode(groupNode, groupNode.name));
-    final mapNodes = {
-      for (var key in possibleGroups)
-        key: addMapping(groupNodes[key]!, (T e) => mapper(e),
-            name: '$name-$key-mapping')
-    };
-    graph.addEdges(node, groupNodes.values.toSet());
-    possibleGroups.forEach((element) {
-      graph.addEdges(groupNodes[element]!, {mapNodes[element]!});
-    });
-    return GroupMapping<T, K, V>(node, grouper, mapNodes, mapper);
+    final groupMapping = node.groupMapBy(
+        grouper: grouper,
+        mapper: mapper,
+        possibleGroups: possibleGroups,
+        name: name);
+    groupMapping.groupNodes.values.forEach(addNode);
+    return addNode(groupMapping);
   }
 
   CopyNode<T> addCopyNode<T>({required String nodeName}) =>
-      addNode(CopyNode<T>(name: nodeName), nodeName);
+      addNode(CopyNode<T>(name: nodeName));
 }
 
 class CompiledStreamGraph {
@@ -368,7 +440,7 @@ class CompiledStreamGraph {
         newStream = node.transformStreams(streams);
       } else if (node is CopyNode) {
         newStream = node.stream;
-      } else if (node is ConversionNode) {
+      } else if (node is ConversionNode || node is Partitioning) {
       } else {
         throw UnimplementedError('$node');
       }

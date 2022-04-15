@@ -12,24 +12,23 @@ import 'absolute_time_interval.dart';
 
 void main() {
   test('Allows returning a given Stream', () {
-    var graph = new StreamGraph();
     final elements = [1, 2, 3, 4, 5];
     final startNode =
-        graph.addEagerSourceNode<int>(Stream.fromIterable(elements));
-    final compiledGraph = graph.compile({});
+        StreamGraph.eagerSourceNode<int>(Stream.fromIterable(elements));
+    final compiledGraph = StreamGraph([startNode]).compile({});
     final startStream = compiledGraph.forNode(startNode);
     expect(startStream, emitsInOrder(elements));
   });
   test(
       'Allows constructing a directed acyclic graph of Streams where edges are transformations',
       () {
-    var graph = new StreamGraph();
-    final startNode = graph.addSourceNode<int>(pauseable: true);
-    final doubledNode = graph.addMapping<int, int>(startNode, (x) => x * 2);
-    final tripledNode = graph.addMapping<int, int>(startNode, (x) => x * 3);
-    final doubledTripledNode =
-        graph.addMapping<int, int>(doubledNode, (x) => x * 3);
+    final startNode = StreamGraph.sourceNode<int>(pauseable: true);
+    final doubledNode = startNode.map<int>((x) => x * 2);
+    final tripledNode = startNode.map<int>((x) => x * 3);
+    final doubledTripledNode = doubledNode.map<int>((x) => x * 3);
     final source = Stream.fromIterable([1, 2, 3]);
+    final graph = new StreamGraph(
+        [startNode, doubledNode, tripledNode, doubledTripledNode]);
     final compiledGraph = graph.compile({startNode: source});
     final doubledStream = compiledGraph.forNode(doubledNode);
     expect(doubledStream, emitsInOrder([2, 4, 6]));
@@ -39,13 +38,12 @@ void main() {
     expect(doubledTripledStream, emitsInOrder([6, 12, 18]));
   });
   test("Allows applying a StreamTransformer", () {
-    var graph = new StreamGraph();
-    final startNode = graph.addSourceNode<int>(pauseable: true);
+    final startNode = StreamGraph.sourceNode<int>(pauseable: true);
     final streamTransformer = StreamTransformer.fromBind(
         (Stream<int> p) => p.map((x) => (x * 2).toString()));
-    final doubledStringNode =
-        graph.addTransformer<int, String>(startNode, streamTransformer);
+    final doubledStringNode = startNode.transform<String>(streamTransformer);
     final source = Stream.fromIterable([1, 2, 3]);
+    final graph = new StreamGraph([doubledStringNode]);
     final compiledGraph = graph.compile({startNode: source});
     final doubledStream = compiledGraph.forNode(doubledStringNode);
     expect(doubledStream, emitsInOrder(['2', '4', '6']));
@@ -53,7 +51,7 @@ void main() {
   test("Allows partitioning a stream into two streams according to a predicate",
       () {
     var graph = new StreamGraph();
-    final startNode = graph.addSourceNode<int>(pauseable: true);
+    final startNode = StreamGraph.sourceNode<int>(pauseable: true);
     final partitioning =
         graph.addPartitioning<int>(startNode, (x) => x % 3 == 0);
     final source = Stream.fromIterable([1, 2, 3, 4, 5, 6, 7, 8, 9]);
@@ -64,16 +62,16 @@ void main() {
     expect(nonMultiplesOf3, emitsInOrder([1, 2, 4, 5, 7, 8]));
   });
   test("Allows grouping a stream into multiple streams with identical key", () {
-    var graph = new StreamGraph();
-    final startNode = graph.addSourceNode<int>(pauseable: true);
-    final grouping = graph.addGroupMapping<int, int, String>(startNode,
+    final startNode = StreamGraph.sourceNode<int>(pauseable: true);
+    final grouping = startNode.groupMapBy<int, String>(
         grouper: (x) => x % 3,
         mapper: (x) => x.toString(),
         possibleGroups: [0, 1, 2],
         name: "mod3-equals");
     final source = Stream.fromIterable([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    final graph =
+        new StreamGraph(grouping.groupNodes.entries.map((e) => e.value));
     final compiledGraph = graph.compile({startNode: source});
-    print(graph.graph.toDotString());
     final rest0 = compiledGraph.forNode(grouping.mapNode(0));
     expect(rest0, emitsInOrder(['3', '6', '9']));
     final rest1 = compiledGraph.forNode(grouping.mapNode(1));
@@ -82,14 +80,13 @@ void main() {
     expect(rest2, emitsInOrder(['2', '5', '8']));
   });
   test("Allows retrieving Streams by name", () {
-    final graph = new StreamGraph();
-    final startNode = graph.addSourceNode<int>();
-    final doubledNode =
-        graph.addMapping<int, int>(startNode, (x) => x * 2, name: 'doubled');
-    graph.addMapping<int, int>(startNode, (x) => x * 3, name: 'tripled');
-    graph.addMapping<int, int>(doubledNode, (x) => x * 3,
-        name: 'doubledTripled');
+    final startNode = StreamGraph.sourceNode<int>();
+    final doubledNode = startNode.map<int>((x) => x * 2, name: 'doubled');
+    final tripled = startNode.map<int>((x) => x * 3, name: 'tripled');
+    final doubleTripled =
+        doubledNode.map<int>((x) => x * 3, name: 'doubledTripled');
     final source = Stream.fromIterable([1, 2, 3]);
+    final graph = new StreamGraph([tripled, doubleTripled]);
     final compiledGraph = graph.compile({startNode: source});
     final doubledStream = compiledGraph['doubled'];
     expect(doubledStream, emitsInOrder([2, 4, 6]));
@@ -100,13 +97,11 @@ void main() {
   });
   test("Allows retrieving a Stream even when downstream Streams depend on it",
       () {
-    final graph = new StreamGraph();
-    final startNode = graph.addSourceNode<int>();
-    final doubledNode =
-        graph.addMapping<int, int>(startNode, (x) => x * 2, name: 'doubled');
-    final doubleTripledNode =
-        graph.addMapping<int, int>(doubledNode, (x) => x * 3);
+    final startNode = StreamGraph.sourceNode<int>();
+    final doubledNode = startNode.map<int>((x) => x * 2, name: 'doubled');
+    final doubleTripledNode = doubledNode.map<int>((x) => x * 3);
     final source = Stream.fromIterable([1, 2, 3]);
+    final graph = new StreamGraph([doubleTripledNode]);
     final compiledGraph = graph.compile({startNode: source});
     final originalStream = compiledGraph.forNode(startNode);
     expect(originalStream, emitsInOrder([1, 2, 3]));
@@ -118,11 +113,10 @@ void main() {
     expect(doubleTripledStream, emitsInOrder([6, 12, 18]));
   });
   test("Allows pausing and resuming reading from the input stream", () async {
-    final graph = new StreamGraph();
-    final startNode = graph.addSourceNode<int>(pauseable: true);
-    final doubledNode =
-        graph.addMapping<int, int>(startNode, (x) => x * 2, name: 'doubled');
+    final startNode = StreamGraph.sourceNode<int>(pauseable: true);
+    final doubledNode = startNode.map<int>((x) => x * 2, name: 'doubled');
     final controller = StreamController<int>();
+    final graph = new StreamGraph([doubledNode]);
     final compiledGraph = graph.compile({startNode: controller.stream});
     final doubledStream = compiledGraph.forNode(doubledNode);
     [1, 2, 3].forEach(controller.add);
@@ -133,11 +127,10 @@ void main() {
     expect(doubledStream, emitsDone);
   });
   test("Allows working with infinite streams", () async {
-    final graph = new StreamGraph();
-    final startNode = graph.addSourceNode<int>();
-    final doubledNode =
-        graph.addMapping<int, int>(startNode, (x) => x * 2, name: 'doubled');
+    final startNode = StreamGraph.sourceNode<int>();
+    final doubledNode = startNode.map<int>((x) => x * 2, name: 'doubled');
     final source = Stream.periodic(Duration(milliseconds: 10), (x) => x + 1);
+    final graph = new StreamGraph([doubledNode]);
     final compiledGraph = graph.compile({startNode: source});
     final originalStream = compiledGraph.forNode(startNode)!.toList();
     final doubledStream = compiledGraph.forNode(doubledNode)!.toList();
@@ -149,23 +142,20 @@ void main() {
         completion([2, 4, 6, 8, 10, 12, 14, 16, 18, 20]));
   });
   test("Allows working with multiple input streams", () async {
-    final graph = new StreamGraph();
-    final startNode1 = graph.addSourceNode<int>(name: "s1");
-    final startNode2 = graph.addSourceNode<int>(name: "s2");
-    final doubledNode1 =
-        graph.addMapping<int, int>(startNode1, (x) => x * 2, name: 'doubled');
-    final tripledNode2 =
-        graph.addMapping<int, int>(startNode2, (x) => x * 3, name: 'tripled');
+    final startNode1 = StreamGraph.sourceNode<int>(name: "s1");
+    final startNode2 = StreamGraph.sourceNode<int>(name: "s2");
+    final doubledNode1 = startNode1.map<int>((x) => x * 2, name: 'doubled');
+    final tripledNode2 = startNode2.map<int>((x) => x * 3, name: 'tripled');
+    final graph = new StreamGraph([doubledNode1, tripledNode2]);
     final doubledTripledNode = graph.addMapping<int, int>(
         doubledNode1, (x) => x * 3,
         name: 'doubledTripled');
     final source1 = Stream.periodic(Duration(milliseconds: 13), (x) => x + 1);
     final source2 = Stream.periodic(Duration(milliseconds: 17), (x) => x + 100);
-    final mergeDoubledAndTripled = graph.combineAll<int, int>(<StreamNode<int>>[
-      doubledNode1,
-      doubledTripledNode,
-      tripledNode2
-    ], Rx.merge<int>, name: "merge");
+    final mergeDoubledAndTripled = graph.addCombineAll<int, int>(
+        <StreamNode<int>>[doubledNode1, doubledTripledNode, tripledNode2],
+        Rx.merge<int>,
+        name: "merge");
     final compiledGraph =
         graph.compile({startNode1: source1, startNode2: source2});
     final mergedStream =
@@ -179,19 +169,17 @@ void main() {
   });
   test("Allows combining multiple input streams by name", () async {
     final graph = new StreamGraph();
-    final startNode1 = graph.addSourceNode<int>(name: "s1");
-    final startNode2 = graph.addSourceNode<int>(name: "s2");
-    final doubledNode1 =
-        graph.addMapping<int, int>(startNode1, (x) => x * 2, name: 'doubled');
-    final tripledNode2 =
-        graph.addMapping<int, int>(startNode2, (x) => x * 3, name: 'tripled');
+    final startNode1 = StreamGraph.sourceNode<int>(name: "s1");
+    final startNode2 = StreamGraph.sourceNode<int>(name: "s2");
+    final doubledNode1 = startNode1.map<int>((x) => x * 2, name: 'doubled');
+    final tripledNode2 = startNode2.map<int>((x) => x * 3, name: 'tripled');
     final doubledTripledNode = graph.addMapping<int, int>(
         doubledNode1, (x) => x * 3,
         name: 'doubledTripled');
     final source1 = Stream.periodic(Duration(milliseconds: 13), (x) => x + 1);
     final source2 = Stream.periodic(Duration(milliseconds: 17), (x) => x + 100);
     final regex = RegExp(r'^doubled');
-    final mergeDoubled = graph.combineAllFromSelector<int, int>(
+    final mergeDoubled = graph.addCombineAllFromSelector<int, int>(
         byName(regex), Rx.merge<int>,
         name: "merge");
     final compiledGraph =
@@ -204,13 +192,12 @@ void main() {
   test("Allows working with multiple input streams of different types",
       () async {
     final graph = new StreamGraph();
-    final startNode1 = graph.addSourceNode<int>(name: "s1");
-    final startNode2 = graph.addSourceNode<int>(name: "s2");
+    final startNode1 = StreamGraph.sourceNode<int>(name: "s1");
+    final startNode2 = StreamGraph.sourceNode<int>(name: "s2");
     final doubledNode1 = graph.addMapping<int, String>(
         startNode1, (x) => x.toString(),
         name: 'string');
-    final tripledNode2 =
-        graph.addMapping<int, int>(startNode2, (x) => x * 3, name: 'tripled');
+    final tripledNode2 = startNode2.map<int>((x) => x * 3, name: 'tripled');
     final source1 = Stream.periodic(Duration(milliseconds: 10), (x) => x + 1);
     final source2 = Stream.periodic(Duration(milliseconds: 50), (x) => x + 100);
     final mergeDoubledAndTripled = graph.combine2<int, String, String>(
@@ -242,7 +229,7 @@ void main() {
   });
   test("Allows scheduling items in a stream", () async {
     final graph = new StreamGraph();
-    final startNode = graph.addSourceNode<Lifecycle<int>>(name: "s1");
+    final startNode = StreamGraph.sourceNode<Lifecycle<int>>(name: "s1");
     final scheduleNode =
         graph.addLifecycleScheduleNode<int>(startNode, name: "s2", schedule: [
       Schedule.start(
@@ -285,18 +272,18 @@ void main() {
         ])));
   });
   test("Allows creating cycles using CopyNodes", () {
-    final graph = new StreamGraph();
-    final copyNode = graph.addCopyNode<int>(nodeName: "merge");
-    final copyTransformedNode = graph.addTransformer<int, int>(
-        copyNode,
+    final copyNode = StreamGraph.copyNode<int>(nodeName: "merge");
+    final copyTransformedNode = copyNode.transform<int>(
         StreamTransformer.fromBind((s) => Stream.fromFuture(
             s.firstWhere((e) => e == 2).then((e) => e * 10))));
-    final startNode = graph.addSourceNode<int>(pauseable: true, name: "source");
-    final merged = graph.combineAll<int, int>(<StreamNode<int>>[
+    final startNode =
+        StreamGraph.sourceNode<int>(pauseable: true, name: "source");
+    final merged = StreamGraph.combineAllNode<int, int>(<StreamNode<int>>[
       startNode,
       copyTransformedNode,
     ], Rx.merge<int>, name: "merge");
 
+    final graph = new StreamGraph([copyTransformedNode, merged]);
     final compiledGraph = graph.compile({
       startNode: Stream<int>.fromIterable([1, 2, 3])
     });
@@ -304,13 +291,13 @@ void main() {
     expect(mergedStream, emitsInOrder([1, 2, 20, 3]));
   });
   test("Allows transforming generated Streams", () async {
-    var graph = new StreamGraph();
-    final startNode = graph.addSourceNode<int>(pauseable: true, name: 'start');
-    final doubledNode =
-        graph.addMapping<int, int>(startNode, (x) => x * 2, name: 'doubled');
+    final startNode =
+        StreamGraph.sourceNode<int>(pauseable: true, name: 'start');
+    final doubledNode = startNode.map<int>((x) => x * 2, name: 'doubled');
     final source = Stream.fromIterable([1, 2, 3]);
     final StreamController<String> sideChannel = StreamController<String>();
 
+    final graph = new StreamGraph([doubledNode]);
     final compiledGraph = graph.compile({startNode: source},
         doOnData: (event, node) => sideChannel.add("${node.name}: $event"));
     final sideChannelFutureList = sideChannel.stream.toList();
@@ -333,11 +320,11 @@ void main() {
     sideChannel.close();
   });
   test("Allows converting Streams to arbitrary objects", () async {
-    var graph = new StreamGraph();
-    final startNode = graph.addSourceNode<int>(pauseable: true);
-    final converted = graph.convert<int, Future<List<int>>>(
-        startNode, (stream) => stream.toList());
+    final startNode = StreamGraph.sourceNode<int>(pauseable: true);
+    final converted =
+        startNode.convert<Future<List<int>>>((stream) => stream.toList());
     final source = Stream.fromIterable([1, 2, 3]);
+    final graph = new StreamGraph([converted]);
     final compiledGraph = graph.compile({startNode: source});
     final convertedToFutureList = compiledGraph.outputFor(converted);
     await Future.delayed(Duration(milliseconds: 1));
