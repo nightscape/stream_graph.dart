@@ -30,9 +30,20 @@ class SourceNode<T> extends StreamNode<T> {
   SourceNode({this.pauseable = true, String? name}) : super(name: name) {
     this.controller = StreamController<T>.broadcast();
   }
-  MapEntry<StreamController<T>, StreamSubscription<T>> attach(
-          Stream<T> source) =>
-      MapEntry(controller, source.listen(controller.add));
+
+  MapEntry<StreamController<T>, StreamSubscription<T>> transformStreams(
+          Map<StreamNode, Stream> existingStreams) =>
+      MapEntry(controller,
+          (existingStreams[this]! as Stream<T>).listen(controller.add));
+}
+
+class EagerSourceNode<T> extends SourceNode<T> {
+  final Stream<T> value;
+  EagerSourceNode(this.value, {String? name, bool pauseable = true})
+      : super(name: name, pauseable: pauseable);
+  MapEntry<StreamController<T>, StreamSubscription<T>> transformStreams(
+          Map<StreamNode, Stream> existingStreams) =>
+      MapEntry(controller, value.listen(controller.add));
 }
 
 class CopyNode<T> extends StreamNode<T> {
@@ -192,8 +203,13 @@ class StreamGraph {
     return node;
   }
 
-  SourceNode<T> addStartNode<T>({String? name, bool pauseable = false}) =>
+  SourceNode<T> addSourceNode<T>({String? name, bool pauseable = false}) =>
       addNode(SourceNode<T>(pauseable: pauseable, name: name), name);
+
+  SourceNode<T> addEagerSourceNode<T>(Stream<T> stream,
+          {String? name, bool pauseable = false}) =>
+      addNode(
+          EagerSourceNode<T>(stream, pauseable: pauseable, name: name), name);
 
   ScheduleNode<T> addScheduleNode<T>(StreamNode<T> input,
           {String? name, required Iterable<Schedule<T>> schedule}) =>
@@ -326,9 +342,11 @@ class CompiledStreamGraph {
       Map<SourceNode, Stream> binding,
       {this.transformStream, this.doOnData}) {
     nodesByName = {for (var e in nodeNames.entries) e.value: e.key};
-    startStreams =
-        binding.map<StreamNode, MapEntry<StreamController, StreamSubscription>>(
-            (key, stream) => MapEntry(key, key.attach(stream)));
+    final givenStreams = {...binding};
+    final sourceNodes =
+        graph.data.keys.whereType<SourceNode>().toList(growable: false);
+    startStreams = Map.fromEntries(sourceNodes
+        .map((node) => MapEntry(node, node.transformStreams(givenStreams))));
     startStreams.forEach((key, value) {
       _addStreamForNode(value.key.stream, key);
     });
