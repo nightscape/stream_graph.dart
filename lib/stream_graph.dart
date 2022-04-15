@@ -258,7 +258,6 @@ class ConversionNode<S, T> extends SingleInputNode<S, T> {
 
 class StreamGraph {
   final graph = DirectedGraph<GraphNode>({});
-  final nodeNames = <GraphNode, String>{};
   StreamGraph([Iterable<GraphNode> nodes = const []]) {
     graph.comparator = null;
     nodes.forEach(addNode);
@@ -297,14 +296,11 @@ class StreamGraph {
       {StreamTransformer<T, T> Function<T>(StreamNode<T> node)? transformStream,
       void Function(dynamic, StreamNode)? doOnData}) {
     this.finalize();
-    return CompiledStreamGraph(graph, nodeNames, binding,
+    return CompiledStreamGraph(graph, binding,
         transformStream: transformStream, doOnData: doOnData);
   }
 
   T addNode<T extends GraphNode>(T node) {
-    if (node.name != null) {
-      nodeNames[node] = node.name!;
-    }
     final edgeNodes = (node is HasInputStreamNodes)
         ? (node as HasInputStreamNodes).inputs
         : <StreamNode>[];
@@ -410,10 +406,13 @@ class CompiledStreamGraph {
       transformStream;
   final void Function(dynamic o, StreamNode)? doOnData;
 
-  CompiledStreamGraph(this.graph, Map<GraphNode, String> nodeNames,
-      Map<SourceNode, Stream> binding,
+  CompiledStreamGraph(this.graph, Map<SourceNode, Stream> binding,
       {this.transformStream, this.doOnData}) {
-    nodesByName = {for (var e in nodeNames.entries) e.value: e.key};
+    nodesByName = {
+      for (var e
+          in this.graph.vertices.where((element) => element.name != null))
+        e.name!: e
+    };
     final givenStreams = {...binding};
     final sourceNodes =
         graph.data.keys.whereType<SourceNode>().toList(growable: false);
