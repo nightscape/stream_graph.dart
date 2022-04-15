@@ -1,3 +1,7 @@
+0.2.5
+=====
+* Add EagerSourceNode which directly takes a Stream
+
 0.2.4
 =====
 * Add CopyNode to lazily copy a Stream
