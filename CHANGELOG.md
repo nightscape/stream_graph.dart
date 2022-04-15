@@ -1,3 +1,8 @@
+0.2.6
+=====
+* Add Stream-like methods to StreamNodes
+* Remove unnecessary field
+
 0.2.5
 =====
 * Add EagerSourceNode which directly takes a Stream
