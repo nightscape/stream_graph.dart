@@ -1,3 +1,7 @@
+0.3.1
+=====
+* Add whereType<U>()
+
 0.3.0
 =====
 * Remove most instance methods on StreamGraph
