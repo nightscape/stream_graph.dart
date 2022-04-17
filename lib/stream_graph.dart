@@ -32,8 +32,12 @@ abstract class StreamNode<T> extends GraphNode with HasInputStreamNodes {
   TransformNode<T, U> map<U>(U Function(T) mapper, {String? name}) =>
       transform(StreamTransformer.fromBind((stream) => stream.map(mapper)),
           name: name);
+
   FilterNode<T> where(bool Function(T) predicate, {String? name}) =>
       FilterNode(this, predicate, name: name);
+
+  FilterNode<T> whereType<U extends T>({String? name}) =>
+      where((e) => e is U, name: name);
 
   Partitioning<T> partition(bool Function(T x) predicate,
       {String? nameForMatches, String? nameForNonMatches}) {
