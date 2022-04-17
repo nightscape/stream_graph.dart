@@ -1,3 +1,7 @@
+0.3.0
+=====
+* Remove most instance methods on StreamGraph
+
 0.2.6
 =====
 * Add Stream-like methods to StreamNodes
