@@ -50,11 +50,10 @@ void main() {
   });
   test("Allows partitioning a stream into two streams according to a predicate",
       () {
-    var graph = new StreamGraph();
     final startNode = StreamGraph.sourceNode<int>(pauseable: true);
-    final partitioning =
-        graph.addPartitioning<int>(startNode, (x) => x % 3 == 0);
+    final partitioning = startNode.partition((x) => x % 3 == 0);
     final source = Stream.fromIterable([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    final graph = new StreamGraph([partitioning]);
     final compiledGraph = graph.compile({startNode: source});
     final multiplesOf3 = compiledGraph.forNode(partitioning.matches);
     expect(multiplesOf3, emitsInOrder([3, 6, 9]));
@@ -146,16 +145,15 @@ void main() {
     final startNode2 = StreamGraph.sourceNode<int>(name: "s2");
     final doubledNode1 = startNode1.map<int>((x) => x * 2, name: 'doubled');
     final tripledNode2 = startNode2.map<int>((x) => x * 3, name: 'tripled');
-    final graph = new StreamGraph([doubledNode1, tripledNode2]);
-    final doubledTripledNode = graph.addMapping<int, int>(
-        doubledNode1, (x) => x * 3,
-        name: 'doubledTripled');
+    final doubledTripledNode =
+        doubledNode1.map<int>((x) => x * 3, name: 'doubledTripled');
     final source1 = Stream.periodic(Duration(milliseconds: 13), (x) => x + 1);
     final source2 = Stream.periodic(Duration(milliseconds: 17), (x) => x + 100);
-    final mergeDoubledAndTripled = graph.addCombineAll<int, int>(
+    final mergeDoubledAndTripled = StreamGraph.combineAllNode<int, int>(
         <StreamNode<int>>[doubledNode1, doubledTripledNode, tripledNode2],
         Rx.merge<int>,
         name: "merge");
+    final graph = new StreamGraph([mergeDoubledAndTripled]);
     final compiledGraph =
         graph.compile({startNode1: source1, startNode2: source2});
     final mergedStream =
@@ -168,20 +166,20 @@ void main() {
             containsAllInOrder([2, 4, 6, 8, 10, 12]))));
   });
   test("Allows combining multiple input streams by name", () async {
-    final graph = new StreamGraph();
     final startNode1 = StreamGraph.sourceNode<int>(name: "s1");
     final startNode2 = StreamGraph.sourceNode<int>(name: "s2");
     final doubledNode1 = startNode1.map<int>((x) => x * 2, name: 'doubled');
     final tripledNode2 = startNode2.map<int>((x) => x * 3, name: 'tripled');
-    final doubledTripledNode = graph.addMapping<int, int>(
-        doubledNode1, (x) => x * 3,
-        name: 'doubledTripled');
+    final doubledTripledNode =
+        doubledNode1.map<int>((x) => x * 3, name: 'doubledTripled');
     final source1 = Stream.periodic(Duration(milliseconds: 13), (x) => x + 1);
     final source2 = Stream.periodic(Duration(milliseconds: 17), (x) => x + 100);
     final regex = RegExp(r'^doubled');
-    final mergeDoubled = graph.addCombineAllFromSelector<int, int>(
+    final mergeDoubled = StreamGraph.combineAllFromSelectorNode<int, int>(
         byName(regex), Rx.merge<int>,
         name: "merge");
+    final graph =
+        new StreamGraph([tripledNode2, doubledTripledNode, mergeDoubled]);
     final compiledGraph =
         graph.compile({startNode1: source1, startNode2: source2});
     final mergedStream = compiledGraph.forNode(mergeDoubled)!.toList();
@@ -191,21 +189,21 @@ void main() {
   });
   test("Allows working with multiple input streams of different types",
       () async {
-    final graph = new StreamGraph();
     final startNode1 = StreamGraph.sourceNode<int>(name: "s1");
     final startNode2 = StreamGraph.sourceNode<int>(name: "s2");
-    final doubledNode1 = graph.addMapping<int, String>(
-        startNode1, (x) => x.toString(),
-        name: 'string');
+    final doubledNode1 =
+        startNode1.map<String>((x) => x.toString(), name: 'string');
     final tripledNode2 = startNode2.map<int>((x) => x * 3, name: 'tripled');
     final source1 = Stream.periodic(Duration(milliseconds: 10), (x) => x + 1);
     final source2 = Stream.periodic(Duration(milliseconds: 50), (x) => x + 100);
-    final mergeDoubledAndTripled = graph.combine2<int, String, String>(
-        tripledNode2,
-        doubledNode1,
-        (s1, s2) => Rx.combineLatest2<int, String, String>(
-            s1, s2, (e1, e2) => "${e1}${e2}"),
-        name: "merge");
+    final mergeDoubledAndTripled =
+        StreamGraph.combine2Node<int, String, String>(
+            tripledNode2,
+            doubledNode1,
+            (s1, s2) => Rx.combineLatest2<int, String, String>(
+                s1, s2, (e1, e2) => "${e1}${e2}"),
+            name: "merge");
+    final graph = new StreamGraph([mergeDoubledAndTripled]);
     final compiledGraph =
         graph.compile({startNode1: source1, startNode2: source2});
     final mergedStream =
@@ -228,10 +226,8 @@ void main() {
         ));
   });
   test("Allows scheduling items in a stream", () async {
-    final graph = new StreamGraph();
     final startNode = StreamGraph.sourceNode<Lifecycle<int>>(name: "s1");
-    final scheduleNode =
-        graph.addLifecycleScheduleNode<int>(startNode, name: "s2", schedule: [
+    final scheduleNode = startNode.addLifecycleSchedule(name: "s2", schedule: [
       Schedule.start(
           duration: Duration(milliseconds: 200),
           after: observingElement(Lifecycle.start(0)),
@@ -246,6 +242,7 @@ void main() {
           after: observingElement(Lifecycle.stop(2)),
           emit: 3)
     ]);
+    final graph = new StreamGraph([scheduleNode]);
     final compiledGraph = graph.compile({
       startNode: TimerStream<Lifecycle<int>>(
               Lifecycle.start(0), Duration(milliseconds: 100))

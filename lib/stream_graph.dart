@@ -69,9 +69,19 @@ abstract class StreamNode<T> extends GraphNode with HasInputStreamNodes {
     return GroupMapping<T, K, V>(this, grouper, mapNodes, mapper);
   }
 
+  ScheduleNode<T> addSchedule(
+          {String? name, required Iterable<Schedule<T>> schedule}) =>
+      ScheduleNode<T>(this, schedule, name: name);
+
   ConversionNode<T, U> convert<U>(U Function(Stream<T>) converter,
           {String? name}) =>
       ConversionNode<T, U>(this, converter, name: name);
+}
+
+extension LifecycleStreamNode<T> on StreamNode<Lifecycle<T>> {
+  LifecycleScheduleNode<T> addLifecycleSchedule(
+          {String? name, required Iterable<Schedule<Lifecycle<T>>> schedule}) =>
+      LifecycleScheduleNode<T>(this, schedule, name: name);
 }
 
 class SourceNode<T> extends StreamNode<T> {
@@ -223,9 +233,7 @@ class CombineAllNode<S, T> extends StreamNode<T> {
       : super(name: name);
   void finalize(StreamGraph graph) {
     _inputs = selector(graph);
-    for (final node in _inputs!) {
-      graph.graph.addEdges(node, {this});
-    }
+    graph.addNode(this);
   }
 
   Stream<T> transformStreams(Map<StreamNode, Stream> inputs) => combinator(this
@@ -273,6 +281,12 @@ class StreamGraph {
   static CopyNode<T> copyNode<T>({required String nodeName}) =>
       CopyNode<T>(name: nodeName);
 
+  static Combine2Node<R, S, T> combine2Node<R, S, T>(
+          StreamNode<R> stream1,
+          StreamNode<S> stream2,
+          Stream<T> Function(Stream<R>, Stream<S>) combinator,
+          {String? name}) =>
+      Combine2Node<R, S, T>(stream1, stream2, combinator, name: name);
   static CombineAllNode<S, T> combineAllNode<S, T>(List<StreamNode<S>> list,
           Stream<T> Function(List<Stream<S>>) combinator,
           {String? name}) =>
@@ -311,88 +325,6 @@ class StreamGraph {
     });
     return node;
   }
-
-  SourceNode<T> addSourceNode<T>({String? name, bool pauseable = false}) =>
-      addNode(SourceNode<T>(pauseable: pauseable, name: name));
-
-  SourceNode<T> addEagerSourceNode<T>(Stream<T> stream,
-          {String? name, bool pauseable = false}) =>
-      addNode(EagerSourceNode<T>(stream, pauseable: pauseable, name: name));
-
-  ScheduleNode<T> addScheduleNode<T>(StreamNode<T> input,
-          {String? name, required Iterable<Schedule<T>> schedule}) =>
-      addNode(ScheduleNode<T>(input, schedule, name: name));
-
-  LifecycleScheduleNode<T> addLifecycleScheduleNode<T>(
-          StreamNode<Lifecycle<T>> input,
-          {String? name,
-          required Iterable<Schedule<Lifecycle<T>>> schedule}) =>
-      addNode(LifecycleScheduleNode<T>(input, schedule, name: name));
-
-  TransformNode<S, T> addTransformer<S, T>(
-          StreamNode<S> input, StreamTransformer<S, T> streamTransformer,
-          {String? name}) =>
-      addNode(input.transform(streamTransformer, name: name));
-
-  TransformNode<S, T> addMapping<S, T>(
-          StreamNode<S> input, T Function(S) mapping,
-          {String? name}) =>
-      addNode(input.map(mapping, name: name));
-
-  Partitioning<T> addPartitioning<T>(
-      StreamNode<T> input, bool Function(T x) predicate,
-      {String? nameForMatches, String? nameForNonMatches}) {
-    return addNode(input.partition(predicate,
-        nameForMatches: nameForMatches, nameForNonMatches: nameForNonMatches));
-  }
-
-  Combine2Node<R, S, T> combine2<R, S, T>(
-          StreamNode<R> stream1,
-          StreamNode<S> stream2,
-          Stream<T> Function(Stream<R>, Stream<S>) combinator,
-          {String? name}) =>
-      addNode(Combine2Node<R, S, T>(stream1, stream2, combinator, name: name));
-
-  CombineAllNode<S, T> addCombineAll<S, T>(List<StreamNode<S>> list,
-          Stream<T> Function(List<Stream<S>>) combinator,
-          {String? name}) =>
-      addNode(combineAllNode(list, combinator, name: name));
-
-  CombineAllNode<S, T> addCombineAllFromSelector<S, T>(
-          List<StreamNode<S>> Function(StreamGraph) selector,
-          Stream<T> Function(List<Stream<S>>) combinator,
-          {String? name}) =>
-      addNode(combineAllFromSelectorNode(selector, combinator, name: name));
-
-  ConversionNode<S, T> convert<S, T>(
-          StreamNode<S> node, T Function(Stream<S>) converter,
-          {String? name}) =>
-      addNode(ConversionNode<S, T>(node, converter, name: name));
-
-  Grouping<T, K> addGrouping<T, K>(StreamNode<T> node, K Function(T) grouper,
-      {required List<K> possibleGroups, String? name}) {
-    final groupNode =
-        node.groupBy(node, grouper, possibleGroups: possibleGroups);
-    groupNode.groupNodes.values.forEach(addNode);
-    return addNode(groupNode);
-  }
-
-  GroupMapping<T, K, V> addGroupMapping<T, K, V>(StreamNode<T> node,
-      {required K Function(T) grouper,
-      required V Function(T) mapper,
-      required List<K> possibleGroups,
-      String? name}) {
-    final groupMapping = node.groupMapBy(
-        grouper: grouper,
-        mapper: mapper,
-        possibleGroups: possibleGroups,
-        name: name);
-    groupMapping.groupNodes.values.forEach(addNode);
-    return addNode(groupMapping);
-  }
-
-  CopyNode<T> addCopyNode<T>({required String nodeName}) =>
-      addNode(CopyNode<T>(name: nodeName));
 }
 
 class CompiledStreamGraph {
@@ -421,7 +353,10 @@ class CompiledStreamGraph {
     startStreams.forEach((key, value) {
       _addStreamForNode(value.key.stream, key);
     });
-    graph.sortedTopologicalOrdering!.whereType<StreamNode>().forEach((node) {
+    final sortedNodes = graph.sortedTopologicalOrdering!
+        .whereType<StreamNode>()
+        .toList(growable: false);
+    sortedNodes.forEach((node) {
       Stream? newStream;
       if (node is SourceNode) {
         newStream = startStreams[node]!.key.stream;
