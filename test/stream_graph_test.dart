@@ -164,7 +164,7 @@ void main() {
         mergedStream,
         completion(allOf(containsAllInOrder([300, 303, 306, 309, 312]),
             containsAllInOrder([2, 4, 6, 8, 10, 12]))));
-  });
+  }, tags: "flaky");
   test("Allows combining multiple input streams by name", () async {
     final startNode1 = StreamGraph.sourceNode<int>(name: "s1");
     final startNode2 = StreamGraph.sourceNode<int>(name: "s2");
@@ -224,7 +224,7 @@ void main() {
             '30310',
           ]),
         ));
-  });
+  }, tags: "flaky");
   test("Allows scheduling items in a stream", () async {
     final startNode = StreamGraph.sourceNode<Lifecycle<int>>(name: "s1");
     final scheduleNode = startNode.addLifecycleSchedule(name: "s2", schedule: [
@@ -267,7 +267,7 @@ void main() {
           afterRoughlyMillis<Lifecycle<int>>(800, Lifecycle.stop(2)),
           afterRoughlyMillis<Lifecycle<int>>(1300, Lifecycle.start(3)),
         ])));
-  });
+  }, tags: "flaky");
   test("Allows creating cycles using CopyNodes", () {
     final copyNode = StreamGraph.copyNode<int>(nodeName: "merge");
     final copyTransformedNode = copyNode.transform<int>(
