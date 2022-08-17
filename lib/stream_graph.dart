@@ -113,6 +113,16 @@ class EagerSourceNode<T> extends SourceNode<T> {
       MapEntry(controller, value.listen(controller.add));
 }
 
+class ShutdownNode<T> extends SourceNode<T> {
+  final T value;
+  ShutdownNode(this.value, {String? name, bool pauseable = true})
+      : super(name: name, pauseable: pauseable);
+  MapEntry<StreamController<T>, StreamSubscription<T>> transformStreams(
+          Map<StreamNode, Stream> existingStreams) =>
+      MapEntry(controller, controller.stream.listen((event) {}));
+  void shutdown() => controller.add(value);
+}
+
 class CopyNode<T> extends StreamNode<T> {
   CopyNode({String? name}) : super(name: "copy-$name");
   final controller = StreamController<T>.broadcast();
@@ -282,6 +292,10 @@ class StreamGraph {
           {String? name, bool pauseable = false}) =>
       EagerSourceNode<T>(stream, pauseable: pauseable, name: name);
 
+  static ShutdownNode<T> shutdownNode<T>(T value,
+          {String? name, bool pauseable = false}) =>
+      ShutdownNode<T>(value, pauseable: pauseable, name: name);
+
   static CopyNode<T> copyNode<T>({required String nodeName}) =>
       CopyNode<T>(name: nodeName);
 
@@ -432,6 +446,9 @@ class CompiledStreamGraph {
   void pause() => forEachStartStreamSubscription((s) => s.pause());
   void resume() => forEachStartStreamSubscription((s) => s.resume());
   void close() {
+    for (final node in graph.vertices.toList(growable: false)) {
+      if (node is ShutdownNode) node.shutdown();
+    }
     forEachStartStreamSubscription((s) => s.cancel());
     forEachStartStreamController((c) => c.close());
   }
