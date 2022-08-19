@@ -328,4 +328,19 @@ void main() {
     compiledGraph.close();
     expect(convertedToFutureList, completion([1, 2, 3]));
   });
+  test("Allows emitting shutdownNode values on closing", () async {
+    final startNode = StreamGraph.sourceNode<int>(pauseable: true);
+    final shutdownNode = StreamGraph.shutdownNode<int>(4, name: 'shutdown');
+    final source = Stream.fromIterable([1, 2, 3]);
+    final mergeSourceAndShutdown = StreamGraph.combineAllNode<int, int>(
+        <StreamNode<int>>[startNode, shutdownNode], Rx.merge<int>,
+        name: "merge");
+    final graph = new StreamGraph([mergeSourceAndShutdown]);
+    final compiledGraph = graph.compile({startNode: source});
+    final mergedStream =
+        compiledGraph.forNode(mergeSourceAndShutdown)!.toList();
+    await Future.delayed(Duration(milliseconds: 1));
+    compiledGraph.close();
+    expect(mergedStream, completion(containsAllInOrder([1, 2, 3, 4])));
+  });
 }
