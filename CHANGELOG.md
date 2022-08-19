@@ -1,3 +1,7 @@
+0.3.2
+=====
+* Add ShutdownNode to emit value when calling close()
+
 0.3.1
 =====
 * Add whereType<U>()
