@@ -40,7 +40,7 @@ jobs:
         run: dart analyze
 
       - name: Test the package
-        run: dart pub global activate coverage && dart test --coverage=coverage && format_coverage --lcov --in=coverage --out=coverage/lcov.info --packages=.packages --report-on=lib
+        run: dart pub global activate coverage && dart test --coverage=coverage && format_coverage --lcov --in=coverage --out=coverage/lcov.info --report-on=lib
 
       - name: Code Coverage
         uses: codecov/codecov-action@v1
