@@ -208,7 +208,7 @@ void main() {
         graph.compile({startNode1: source1, startNode2: source2});
     final mergedStream =
         compiledGraph.forNode(mergeDoubledAndTripled)!.toList();
-    await Future.delayed(Duration(milliseconds: 100));
+    await Future.delayed(Duration(milliseconds: 200));
     compiledGraph.close();
     expect(
         mergedStream,
