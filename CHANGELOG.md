@@ -1,3 +1,7 @@
+0.3.3
+=====
+* Allow freezed 2.2.0,  build_runner <2.4.0, test <1.21.6
+
 0.3.2
 =====
 * Add ShutdownNode to emit value when calling close()
