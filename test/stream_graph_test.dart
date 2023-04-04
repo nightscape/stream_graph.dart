@@ -1,9 +1,6 @@
 import 'dart:async';
-import 'dart:io';
-import 'dart:math';
 
 import 'package:rxdart/rxdart.dart';
-import 'package:stream_graph/dot_visualization.dart';
 import 'package:stream_graph/stream_graph.dart';
 import 'package:stream_graph/stream_schedule.dart';
 import 'package:test/test.dart';
