@@ -14,5 +14,5 @@ dependencies:
 
 dev_dependencies:
   test: '>=1.21.0  <1.21.6'
-  build_runner: '>=2.2.1 <2.4.0'
+  build_runner: '<2.4.5'
   freezed: 2.2.0
