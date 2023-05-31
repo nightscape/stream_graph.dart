@@ -1,3 +1,6 @@
+0.3.9
+=====
+* Automatically publish to pub.dev
 0.3.3
 =====
 * Allow freezed 2.2.0,  build_runner <2.4.0, test <1.21.6
