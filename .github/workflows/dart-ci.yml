@@ -43,7 +43,7 @@ jobs:
         run: dart pub global activate coverage && dart test --coverage=coverage && format_coverage --lcov --in=coverage --out=coverage/lcov.info --report-on=lib
 
       - name: Code Coverage
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           file: coverage/lcov.info
