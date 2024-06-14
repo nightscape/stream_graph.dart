@@ -7,7 +7,7 @@ environment:
   sdk: ">=2.19.0 <4.0.0"
 
 dependencies:
-  directed_graph: ^0.3.7
+  directed_graph: ^0.4.0
   rxdart: ^0.28.0
   freezed_annotation: ^2.2.0
 
