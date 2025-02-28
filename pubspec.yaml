@@ -9,7 +9,7 @@ environment:
 dependencies:
   directed_graph: ^0.4.0
   rxdart: ^0.28.0
-  freezed_annotation: ^2.2.0
+  freezed_annotation: ^3.0.0
 
 
 dev_dependencies:
