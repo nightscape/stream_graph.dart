@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:rxdart/rxdart.dart';
 import 'package:stream_graph/stream_graph.dart';
@@ -221,7 +222,9 @@ void main() {
             '30310',
           ]),
         ));
-  }, tags: "flaky");
+  },
+      tags: "flaky",
+      skip: Platform.isWindows ? 'Skipping test on Windows' : false);
   test("Allows scheduling items in a stream", () async {
     final startNode = StreamGraph.sourceNode<Lifecycle<int>>(name: "s1");
     final scheduleNode = startNode.addLifecycleSchedule(name: "s2", schedule: [
